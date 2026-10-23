@@ -1,5 +1,5 @@
 // Nur die App-Hülle (diese Beispiel-Seite) wird für den Offline-Start gemerkt; keine Eingaben, keine Daten.
-const V = 'assistent-df944ceb9f', DATEIEN = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
+const V = 'assistent-ea90e24fef', DATEIEN = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(DATEIEN.map((d) => new Request(d, { cache: 'reload' }))))); });   // kein stilles skipWaiting: der neue Stand wartet (Sicherheit S3); am HTTP-Cache vorbei, sonst alter Stand unter neuer Version
 self.addEventListener('message', (e) => { try { if (e.data === 'weiter' && e.source && String(e.source.url).startsWith(self.registration.scope)) self.skipWaiting(); } catch (x) { /* fremde/ungültige Quelle: nichts tun */ } });   // nur nach Tippen auf „Neue Version“, nur aus dem App-Bereich
 self.addEventListener('activate', (e) => { if (self.registration.installing || self.registration.waiting) return;   // ein neuerer Stand installiert gerade: dessen Cache nicht löschen, er räumt selbst auf (ChatGPT cfdd08)

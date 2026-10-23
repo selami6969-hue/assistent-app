@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nkW+dUDx5g5a5lWl0xddV2aFH4zCquYVopx/tBGhsYk=' 'sha256-sAv6iYa4ovDnpSUeliZi49vZrOvE9ZwxPMn9tEw7790=' 'sha256-4FTtSVGDRAbPysbbjSO8psI3rrm++I6GV0O4qDj6tsQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nkW+dUDx5g5a5lWl0xddV2aFH4zCquYVopx/tBGhsYk=' 'sha256-qTfI/6t5SH+Iyx0blxE1JZfZdw6X1IQ9hN6oXbEjSAw=' 'sha256-4FTtSVGDRAbPysbbjSO8psI3rrm++I6GV0O4qDj6tsQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#F4F5EF">
@@ -372,8 +372,6 @@ function hinweis(liste) {
 var o = liste.filter(function(x) { return x.typ !== 'sonstiges' && x.betrag != null; }), s = o.reduce(function(a, x) { return a + x.betrag; }, 0);
 return o.length ? o.length + (o.length === 1 ? ' offene Rechnung' : ' offene Rechnungen') + ', die Sie zahlen müssen (zusammen ' + (s / 100).toFixed(2).replace('.', ',') + ' €; von Ihnen bestätigt, Zahlstatus unbekannt)' : 'Keine offenen Rechnungen vorgemerkt';
 }
-/* Verbindung: automatisches Wiederverbinden mit Wartezeit-Staffelung 5 s, 30 s, 2 min, 10 min, 1 h; danach Meldung "Neuanmeldung nötig".
-Nachladen: ab dem letzten verarbeiteten Stand (Mail-Kennung/Datum), damit nichts verloren geht und nichts doppelt kommt. */
 var STAFFEL = [5, 30, 120, 600, 3600];
 function naechsterVersuch(fehlversuche) { return fehlversuche < STAFFEL.length ? { warten_s: STAFFEL[fehlversuche], status: 'getrennt' } : { warten_s: null, status: 'neuanmeldung' }; }
 function nachladen(alle, letzterStand, gesehen) { gesehen = gesehen || []; return alle.filter(function(m) { return m.eingang >= letzterStand && gesehen.indexOf(m.id) < 0; }); }
@@ -384,8 +382,6 @@ if (typeof module !== 'undefined') module.exports = api; else root.MAIL = api;
 'use strict';
 var leer = function(x) { return x == null || String(x).trim() === ''; };
 var nr = function(s) { var m = String(s || '').match(/(\d+)\D*$/); return m ? Number(m[1]) : null; };
-/* r: {aussteller:{name,anschrift,steuernummer,ustid}, kleinunternehmer, empfaenger:{name,anschrift}, datum, nummer, vorherigeNummern[], leistungsdatum, leistungszeitraum,
-positionen:[{text,menge}], netto, steuersatz, steuer, brutto (Cent), lohnanteil, privatkunde:true|false|null, b13b:true|false|null, vorjahresumsatz }  */
 function pruefe(r) {
 var o = [], f = function(code, text) { o.push({ stufe: 'fehlt', code: code, text: text }); }, p = function(code, text) { o.push({ stufe: 'pruefen', code: code, text: text }); }, h = function(code, text) { o.push({ stufe: 'hinweis', code: code, text: text }); };
 var a = r.aussteller || {}, e = r.empfaenger || {}, kb = r.brutto != null && r.brutto <= 25000 && r.b13b !== true;
@@ -436,8 +432,6 @@ if (typeof module !== 'undefined') module.exports = api; else root.PFLICHT = api
 var esc = function(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
 var eur = function(c) { return (c / 100).toFixed(2).replace('.', ',') + ' €'; };
 var SPALTE = { pos: 'Pos', text: 'Beschreibung', menge: 'Menge', preis: 'Einzelpreis', gesamt: 'Gesamt' };
-/* layout: {akzent, logo:{seite}, absender:{firma,zeilen,steuernummer,iban}, spalten:[{name,art}], schrift:'serif'|'sans'|null, kleinunternehmer}
-r: {empfaenger:{name,anschrift}, datum, nummer, leistungsdatum, positionen:[{text,menge,preis,gesamt}], netto, steuersatz, steuer, brutto} (Cent) */
 function html(layout, r) {
 var a = layout.absender || {}, farbe = /^#[0-9a-f]{6}$/i.test(layout.akzent || '') ? layout.akzent : '#333333', seite = ['links', 'rechts', 'mitte'].indexOf(layout.logo && layout.logo.seite) >= 0 ? layout.logo.seite : 'links';
 var spalten = ((layout.spalten || []).filter(function(s) { return SPALTE[s && s.art]; }).length >= 3 ? layout.spalten.filter(function(s) { return SPALTE[s && s.art]; }) : ['pos', 'text', 'menge', 'preis', 'gesamt'].map(function(k) { return { art: k, name: SPALTE[k] }; }));
@@ -908,8 +902,6 @@ if (typeof module !== 'undefined') module.exports = api; else root.SCHEMA = api;
 'use strict';
 var nm = function(s) { return String(s == null ? '' : s).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/ı/g, 'i').replace(/ł/g, 'l').replace(/ø/g, 'o').replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); };
 var CAP = '(?:(?:van|von)\\s+(?:der|den|dem)\\s+|(?:al|el|de|da|di|bin|ibn|del|dos|la|le|ter|van|von)[\\s-])?[A-ZÀ-ÖØ-ÞĀ-ſ][A-Za-zÀ-ÖØ-öø-ſ\u0027\u2019-]+';
-/* Anfahrt-BETRAG: „50 Euro Anfahrtskosten“, „Anfahrtspauschale 50“, „Anfahrt 50 Euro“, „50 Euro für die Anfahrt“, „fünfzig Euro“; „25 pro Strecke“ / „zweimal 25“ sind mehrdeutig (25 oder 50?) -> unklar mit beiden Werten.
-Die gesagte Zahl gewinnt IMMER über den Standard aus den Einstellungen; Abweichung vom Standard wird in der Anzeige gelb und braucht Bestätigung. Ergebnis {cent,text} | {unklar:true, werte:[…]} | null. */
 var ANF = '(?:anfahrtskosten|anfahrtspauschale|anfahrtsgeld|anfahrt|fahrtkostenpauschale|fahrtkosten|fahrtpauschale|wegepauschale|wegegeld|fahrtgeld|fahrt|hinfahrt|hinfahren|anruecken|anrueckpauschale)';
 function anfahrtBetragIn(seg) {
 var NZ = NORMA.normalisiere(seg), n = NZ.text.replace(/€/g, ' € '), q; n = wortzahlen(n);
@@ -1132,8 +1124,6 @@ var wz = NORMA.wz, wortzahlen = function(n) { return NORMA.wortzahlen(n, 10); };
 var NACH_KEIN = /^\s*(?:für\s+(?:die\s+|den\s+|das\s+|eine?n?\s+)?(?!stunde|arbeit)[a-zäöüß]{3,}|(?:anfahrt|fahrt|material|teile|ersatzteil)\w*)/;
 var RATE_TRIG = /\b(?:auf|pro|fuer|für)\s+(?:eine|1)\s+(?:arbeits|zeit)?stunden?\b|\b\w*stunden?\s+zu\s+\d|\b(?:fuer|für)\s+(?:jede|eine)\s+(?:zeit|arbeits)?stunde\b|\bjede\s+stunde\b|\bzu\s+buche\b|\b(?:viertel|dreiviertel|halb|halbe)stunde\s+zu\s+\d|\b(?:jede[rnm]?|pro|je|auf|fuer|für)\s+(?:(?:60|sechzig|1)\s+(?:arbeits)?(?:minuten|stunden?)|(?:zeit|arbeits)?stunde)\b|\b(?:eine|1)\s+stunde\s+(?:arbeit\s+)?(?:bekommt|kriegt|bringt)\b|\b(?:eine|einer|1)\s+stunden?\s+(?:arbeit\w*\s+)?(?:kostet|kosten|macht|mit\s+\d|wuerde|würde|soll|geht)|\b(?:pro|je|jede|alle)\s+(?:(?:60|sechzig)\s+minuten|1\s+stunden?)\b|\bstunde\s+(?:arbeit\s+)?auf\s+der\s+uhr\b|\bzeitstunde\b|\bstunde\s+(?:arbeit\w*\s+)?(?:wird|ist)\s+(?:\w+\s+){0,3}mit\s+\d|\b(?:jeweils|je)\s+(?:eine|1|sechzig|60)\s+(?:arbeits)?(?:stunden?|minuten)\b|\bstunden?\s*,?\s*(?:zu|a|à)\s+\d|\bstunden?\s+mit\s+\d|\bsatz\b|\bstunden?\s+(?:[a-zäöüß]+\s+){1,2}(?:zu|a|à)\s+\d|\bstunde\s+(?:kostet|koste|kosten)\b|\b(?:pro|je|die|in der)\s+(?:stunde|std)\b|\bstundensatz\b|\bstundenlohn\b|\bstundenpreis\b|\bverrechnungssatz\b|\barbeitsstunde\b|(?:euro|eur|€)\s*\/\s*(?:h|std)\b|\d\s*\/\s*(?:h|std)\b|\bstunden?\s+(?:zu|a|à|mal)\s+\d/;
 var KEIN_SATZ = /(?:material\w*|teile|ersatzteil\w*|anfahrt\w*|fahrt\w*|hinfahr\w*|fahrtkosten|pauschale|zuschlag|aufschlag|gesamtpreis|gesamtsumme|summe|festpreis|angebot)\W+(?:\w+\W+){0,2}$/;
-/* Stundensatz in allen Formen: „120 Euro pro Stunde“, „pro Stunde 120“, „Stundensatz 65“, „die Stunde kostet 80“, „für 90 die Stunde“, „hundertzwanzig“, „120 €/h“.
-Ergebnis {cent,text} | {unklar:true} | null. Mehrere verschiedene Beträge / Selbstkorrektur / Betrag klingt nach Material/Anfahrt -> unklar (nie raten). Nur für DIESE Rechnung; Stammdaten bleiben (Schutzregel). */
 function stundensatzIn(seg) {
 var NZ = NORMA.normalisiere(seg), n0 = NZ.text.replace(/€/g, ' € '), saetze = n0.split(/[.!?]+/).map(wortzahlen), n = saetze.filter(function(x) { return RATE_TRIG.test(x); })[0], korr = NZ.korrektur;
 if (!n) return null;
@@ -1764,7 +1754,7 @@ const innen = el('div', { className: 'dock-innen' });
 const alles = el('button', { className: 'neben', type: 'button' }, icon('liste'), 'Alles'); alles.addEventListener('click', () => ersetze('alles'));
 if (aktuell[0] === 'alles') alles.setAttribute('aria-current', 'page');
 const primaer = ['heute', 'alles', 'antwort'].includes(aktuell[0]);
-const sprech = el('button', { className: 'sprechtaste' + (primaer ? ' primaer' : ''), type: 'button' }, icon('mic'), 'Sprechen'); sprech.addEventListener('click', () => { if (aktuell[0] !== 'diktat') zeige('diktat'); });
+const sprech = el('button', { className: 'sprechtaste' + (primaer ? ' primaer' : ''), type: 'button' }, icon('mic'), 'Sprechen'); sprech.addEventListener('click', () => { if (aktuell[0] !== 'diktat') zeige('diktat'); const sb = document.getElementById('sprechen-start'), f = document.getElementById('sprachtext'); if (sb) sb.click(); else if (f) { f.focus(); toast('Sprechen: in Safari öffnen oder tippen.'); } });
 if (aktuell[0] === 'diktat') sprech.setAttribute('aria-current', 'page');
 const tipp = el('button', { className: 'neben', type: 'button' }, icon('tasten'), 'Tippen'); tipp.setAttribute('aria-expanded', 'false');
 const feld = el('input', { className: 'feld', id: 'tippfeld', placeholder: 'z. B. Rechnung für Frau Beispiel: Siphon getauscht, 1 Stunde', autocomplete: 'off' }); feld.setAttribute('aria-label', 'Tippen statt sprechen');
@@ -2223,7 +2213,8 @@ zeichnen();
 }
 const fragBeantwortet = (i) => !!S.web && ((i === 0 && !!S.web.gewerk) || (i === 2 && !!S.web.leistungen));
 const naechsteFrage = (i) => { let j = i + 1; while (j < 7 && fragBeantwortet(j)) j += 1; return j; };
-const T = { kunden: KUNDEN.slice(), rech: [], vorschlaege: [], protokoll: [], pflichtLog: [], zaehler: 0, ctx: null, adressen: {}, lern: LERNSCHLEIFE.neu(), gewaehlt: null, daten: Object.create(null), archiv: [], zuletzt: [], termine: [], erinnerung: { vortag: true, stunde: true, tages: true }, folge: null, buero: BUERO.neu(Number(heuteISO().slice(0, 4))), auftraege: [] };
+const T = { kunden: KUNDEN.slice(), rech: [], vorschlaege: [], pflichtLog: [], zaehler: 0, ctx: null, adressen: {}, lern: LERNSCHLEIFE.neu(), gewaehlt: null, daten: Object.create(null), archiv: [], zuletzt: [], termine: [], erinnerung: { vortag: true, stunde: true, tages: true }, folge: null, buero: BUERO.neu(Number(heuteISO().slice(0, 4))), auftraege: [] };
+const srWeg = () => { if (T.srAus) T.srAus(); }; window.addEventListener('pagehide', srWeg); document.addEventListener('visibilitychange', () => { if (document.hidden) srWeg(); });
 const BEISPIELE = ['Rechnung erstellen für Müller', 'Kunde anlegen: Herr Schmidt, Hauptstraße 5, 12345 Berlin, Telefon 0151 2345678',
 'Ich war 3 Stunden bei Herrn Schmidt, habe 2 Rohre und Dichtband verbaut', 'Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden, ohne Anfahrt, heute',
 'Kunde anlegen Frau Weber und dann Rechnung erstellen', 'Wer hat noch nicht bezahlt?'];
@@ -2446,14 +2437,11 @@ const feld = el('textarea', { className: 'feld', id: 'sprachtext', rows: 2, plac
 const sagen = (t) => { feld.value = t; };
 const los = knopf('Auswerten', 'knopf-zweit', () => { const t = feld.value.trim(); if (t) auswerten(t, null); });
 const beispiele = el('div', { className: 'chips' }, ...BEISPIELE.map((t) => { const b = el('button', { type: 'button', className: 'chip', textContent: t }); b.addEventListener('click', () => sagen(t)); return b; }));
-const hilfe = details('Mikrofon: so geht es', p('1. Tippen Sie auf „Sprechen starten“. Ihr Browser fragt dann: „localhost möchte Ihr Mikrofon verwenden“. Tippen Sie auf „Zulassen“.', 'klein'),
-p('2. Sprechen Sie einen Satz, am besten einen der Beispielsätze. Dann „Fertig“. Die Aufnahme wird nur auf diesem Mac in Text umgewandelt (Whisper) und sofort gelöscht. Kein Internet, kein Cloud-Dienst.', 'klein'),
-p('3. Erlaubnis zurücknehmen: Schloss-Symbol links in der Adresszeile → Mikrofon → Blockieren. Ohne Freigabe können Sie tippen.', 'klein'));
 let aufnahme = null;
 const micBereich = el('div', { className: 'karte' });
 const micZeigen = () => {
 if (!mic) { micBereich.replaceChildren(el('h2', { textContent: 'Sprechen' }), p('Das Mikrofon geht nur, wenn die Seite über start-ki.sh geöffnet wurde (Adresse localhost:8765). Sie können hier trotzdem tippen.', 'klein')); return; }
-micBereich.replaceChildren(el('h2', { textContent: 'Sprechen' }), p('Einen Satz sprechen, „Fertig“ tippen. Die KI hört lokal auf diesem Mac.', 'klein'), knopf('Sprechen starten', 'knopf-haupt', start, 'mic'), meld);
+micBereich.replaceChildren(el('h2', { textContent: 'Sprechen' }), p('Einen Satz sprechen, „Fertig“ tippen. Die KI hört lokal auf diesem Mac.', 'klein'), Object.assign(knopf('Sprechen starten', 'knopf-haupt', start, 'mic'), { id: 'sprechen-start' }), meld);
 };
 let startet = false;
 const start = async () => {
@@ -2481,9 +2469,29 @@ if (T.gewaehlt) kundenBox.replaceChildren(el('h2', { textContent: `Kunde: ${T.ge
 else { kundenBox.replaceChildren(el('h2', { textContent: 'Kunde wählen (empfohlen)' }), p('Beim Hinfahren den Kunden wählen, dann sprechen. Ohne Auswahl erkenne ich den Namen aus dem Satz und frage bei Unsicherheit.', 'klein'), suche, liste, el('div', { className: 'antworten' }, knopf('Kundenstamm verwalten', 'knopf-still', () => zeige('kunden')), knopf('Termine und Erinnerungen', 'knopf-still', () => zeige('termine')), knopf('Büro: Rechnungen, offene Posten, Sicherung', 'knopf-still', () => zeige('buero')))); fuellen(); }
 };
 kundenZeigen();
+const SR_INFO = { unsicher: true, logprob: 'Apple' }, SR = window.SpeechRecognition || window.webkitSpeechRecognition, sprechBox = el('div', { className: 'sprechen' }); let sr = null;
+const sprechRuhe = (m) => { sr = null; const b = knopf('Sprechen', 'knopf-haupt', sprechen, 'mic'); b.id = 'sprechen-start'; sprechBox.replaceChildren(b, m ? p(m, 'hinweis warn') : null); };
+function sprechen() {
+if (!SR) { sprechRuhe('Sprechen geht hier nicht. iPhone: in Safari öffnen (nicht Telegram) – oder tippen. Auch Tastatur-Diktat geht an Apple/Google: nur Testdaten.'); feld.focus(); return; }
+if (!T.srJa) { sprechBox.replaceChildren(el('div', { className: 'karte gelb' }, p('Die Spracherkennung macht der Hersteller (iPhone: Apple, Android/Chrome: Google): Ihr Gesprochenes kann dorthin übertragen werden. Nur Testdaten sprechen – echte Kundendaten erst nach Klärung des Datenschutzes.', 'klein'),
+el('div', { className: 'antworten' }, knopf('Verstanden, sprechen', 'knopf-haupt', () => { T.srJa = true; sprechen(); }, 'mic'), knopf('Lieber tippen', 'knopf-still', () => { sprechRuhe(); feld.focus(); })))); return; }
+if (T.srAus) T.srAus();
+const vorher = feld.value, uhr = el('div', { className: 'uhr', textContent: '0:00' }); let fertig = '', text = '', da = false, z, w; const t0 = Date.now(), aus = () => ende(), halt = () => { if (sr) sr.stop(); setTimeout(() => { if (T.srAus === aus) schluss(); }, T.srMs || 3000); };
+const ende = (m) => { clearInterval(z); clearTimeout(w); T.srAus = null; const r = sr; if (r) { r.onend = r.onresult = r.onerror = null; try { r.abort(); } catch (x) {  } } sprechRuhe(m); if (m) { if (!text) feld.value = vorher; feld.focus(); } };
+const schluss = () => { ende(text ? null : 'Nichts verstanden – nochmal.'); if (text) { feld.value = text; T.srText = text; auswerten(text, SR_INFO); } };
+sr = new SR(); sr.lang = 'de-DE'; sr.interimResults = true; sr.continuous = true; sr.onstart = () => { da = true; };
+sr.onresult = (e) => { da = true; let zw = ''; fertig = ''; for (const r of e.results) { if (r.isFinal) fertig += r[0].transcript; else zw += r[0].transcript; } text = (fertig + zw).trim(); feld.value = T.srText = text; };
+sr.onerror = (e) => ende({ 'not-allowed': 'Nicht erlaubt. iPhone: Einstellungen → Safari → Mikrofon; Diktieren einschalten.', 'service-not-allowed': 'Hier nicht erlaubt – in Safari öffnen.', 'no-speech': 'Nichts gehört – nochmal.', 'audio-capture': 'Kein Mikrofon.', network: 'Spracherkennung nicht erreichbar (Internet?).' }[e.error] || 'Abgebrochen (' + e.error + ').');
+sr.onend = schluss; T.srAus = aus;
+z = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); uhr.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; if (!sprechBox.isConnected) ende(); else if (s >= 95) schluss(); else if (s >= 90 && sr) sr.stop(); }, 1000);
+w = setTimeout(() => { if (!da) ende('Keine Reaktion – in Safari öffnen oder tippen.'); }, 8000);
+try { sr.start(); } catch (x) { ende('Start nicht möglich – bitte tippen.'); return; }
+sprechBox.replaceChildren(el('span', { className: 'status st-ja' }, icon('mic'), 'Ich höre zu'), uhr, p('Sprechen Sie jetzt, dann „Fertig“.', 'gross'), el('div', { className: 'antworten' }, knopf('Fertig', 'knopf-stopp', halt, 'stopp'), knopf('Abbrechen', 'knopf-still', () => { ende(); feld.value = vorher; })));
+}
+sprechRuhe();
 if (schlank) { feld.rows = 5; feld.classList.add('diktat-feld'); feld.placeholder = 'z. B. Bei Frau Beispiel zwei Stunden, ein Siphon, Anfahrt 30 Euro, Rechnung.'; feld.setAttribute('aria-label', 'Ihr Diktat');
-app.append(el('section', { className: 'karte' }, el('h2', { textContent: 'Was haben Sie gemacht?' }), p('Auf der Tastatur das Mikrofon antippen und sprechen – oder tippen: Kunde, Arbeitszeit, Material, Anfahrt, Rechnung oder nur erfassen.', 'klein'), el('p', {}, el('strong', { textContent: 'Jeden Auftrag einzeln diktieren – ein Kunde, ein Auftrag pro Diktat.' })), feld, knopf('Prüfen', 'knopf-haupt', () => { const t = feld.value.trim(); if (t) auswerten(t, null); else feld.focus(); }, 'ok'), p('Die App macht nur Entwürfe. Vergleichen Sie jeden Entwurf mit Ihrem Diktat, bevor Sie ihn verwenden.', 'klein')), aus); }
-else app.append(el('div', { className: 'hinweis' }, icon('schloss'), p('Alles hier ist Test: erfundene Kunden und Preise, nichts wird gespeichert oder verschickt. Die KI ändert nie Preise oder Artikel.')), kundenBox, micBereich, eingabe, hilfe, ...[kiSchalter()].filter(Boolean), aus);
+app.append(el('section', { className: 'karte' }, el('h2', { textContent: 'Was haben Sie gemacht?' }), p('Sprechen oder tippen: Kunde, Arbeitszeit, Material, Anfahrt, Rechnung oder nur erfassen.', 'klein'), el('p', {}, el('strong', { textContent: 'Jeden Auftrag einzeln diktieren – ein Kunde, ein Auftrag pro Diktat.' })), mic ? micBereich : sprechBox, feld, knopf('Prüfen', 'knopf-haupt', () => { if (T.srAus) T.srAus(); const t = feld.value.trim(); if (t) auswerten(t, t === T.srText ? SR_INFO : null); else feld.focus(); }, 'ok'), p('Die App macht nur Entwürfe. Vergleichen Sie jeden Entwurf mit Ihrem Diktat, bevor Sie ihn verwenden.', 'klein')), aus); }
+else app.append(el('div', { className: 'hinweis' }, icon('schloss'), p('Alles hier ist Test: erfundene Kunden und Preise, nichts wird gespeichert oder verschickt. Die KI ändert nie Preise oder Artikel.')), kundenBox, micBereich, eingabe, ...[kiSchalter()].filter(Boolean), aus);
 function auswerten(text, info) {
 V.text = text; V.lese = text; V.temp = {}; V.wahl = {}; V.modell = null; V.kiStatus = null; V.info = info; V.best = {}; V.eing = {}; V.bew = {}; V.ki = {}; V.id = ++T.zaehler; V.fertig = {}; V.absicht = {}; V.einAuftrag = text === V.neinText ? false : null;  V.assiAn = true; V.assi = { gesehen: new Set(), hoerOk: false, aendern: null }; V.lauf += 1; rechne(); zeichne(); kiNach(V.lauf);
 }
@@ -2867,27 +2875,18 @@ const bzs = V.befehle.map((b, nr) => ({ b, nr, zeilen: mitBewertung(testZeilen(b
 const gHoer = V.info ? (V.info.unsicher ? 'Spracherkennung unsicher – bitte Text prüfen' : 'Spracherkennung sicher') : 'getippt';
 const korr = el('textarea', { className: 'feld', rows: 2, id: 'gehoert' }); korr.value = V.text; korr.setAttribute('aria-label', 'Gehörter Text, bei Bedarf korrigieren');
 if (V.kiStatus) teile.push(p(V.kiStatus === 'läuft' ? 'Die KI liest den Text mit (zweiter Leser) …' : V.kiStatus === 'fertig' ? 'Gelesen von Regeln UND KI: Uneinigkeit ist gelb markiert.' : 'KI ' + V.kiStatus + ' – es gelten nur die Regeln (nichts wird als sicher markiert, was nur eine Seite liest).', 'klein'));
-teile.push(el('section', { className: 'karte' }, el('h2', { textContent: 'Das habe ich gehört' }), V.lese !== V.text ? p('Wörterbuch angewendet: Ihre Wörter wurden für das Lesen ersetzt (Original bleibt hier stehen).', 'klein') : null, p(`${gHoer}${V.info ? ` (Güte ${V.info.logprob})` : ''}. Falsch gehört? Hier korrigieren und neu auswerten.`, 'klein'), korr,
+teile.push(el('section', { className: 'karte' }, el('h2', { textContent: 'Das habe ich gehört' }), V.lese !== V.text ? p('Wörterbuch angewendet: Ihre Wörter wurden für das Lesen ersetzt (Original bleibt hier stehen).', 'klein') : null, p(`${gHoer}${V.info && typeof V.info.logprob === 'number' ? ` (Güte ${V.info.logprob})` : ''}. Falsch gehört? Hier korrigieren und neu auswerten.`, 'klein'), korr,
 el('div', { className: 'antworten' }, knopf('Neu auswerten', 'knopf-zweit', () => { const t = korr.value.trim(); if (t) { feld.value = t; auswerten(t, null); } }), ...(V.assiAn ? [] : [knopf('Schritt für Schritt prüfen', 'knopf-haupt', () => { V.assiAn = true; zeichne(); })]))));
 if (V.zahlFrage && V.einAuftrag !== true) { teile.push(einFrage()); aus.replaceChildren(...teile); assistent(bzs); return; }
-let sumOk = 0, sumN = 0, richtig = 0, bewertet = 0; const abw = [];
-bzs.forEach((bz) => { const k = befehlKarten(bz); sumOk += k.ok; sumN += k.n;
-bz.zeilen.forEach((r) => { const bw = V.bew[bz.b.satz + '|' + r.id]; if (bw) { bewertet += 1; if (bw === 'ja') richtig += 1; } if (r.gezaehlt && r.status !== 'ok') abw.push([bz.nr + 1, r]); });
+const abw = [];
+bzs.forEach((bz) => { const k = befehlKarten(bz);
+bz.zeilen.forEach((r) => { if (r.gezaehlt && r.status !== 'ok') abw.push([bz.nr + 1, r]); });
 const quoteEl = bz.b.typ === 'offen' || bz.b.typ === 'unklar' ? null : el('p', { className: 'quote', textContent: `${k.ok} von ${k.n} Angaben sicher übernommen` + (k.ok < k.n ? ` · ${k.n - k.ok} unsicher oder fehlt` : '') });
 const links = el('div', { className: 'vn-links' }, el('h3', { textContent: schlank ? 'Ihr Diktat' : 'Gesagt' }), textMitMarken(bz.b, [bz]), ...(schlank ? [] : [k.normKarte, k.tabelle]));
 const rechts = el('div', { className: 'vn-rechts' }, el('h3', { textContent: 'Daraus gemacht' }), rechnungKarte(bz.b, bz.zeilen));
 teile.push(el('section', { className: 'karte test-befehl' }, k.kopf, schlank ? null : quoteEl, el('div', { className: 'vn' }, links, rechts), rueckfragen(bz), ausfuehren(bz))); });
-const kopfSumme = el('section', { className: 'karte' }, el('h2', { textContent: 'Trefferquote dieses Tests' }),
-p(sumN ? `${sumOk} von ${sumN} Angaben sicher übernommen` : 'Keine prüfbaren Angaben', 'gross'), bewertet ? p(`Ihre Bewertung: ${richtig} von ${bewertet} bewerteten Angaben richtig (Stimmt/Falsch bei jeder Zeile).`, 'klein') : p('„Sicher übernommen“ heißt: die Stelle im Satz wurde gefunden und nichts war unklar. Ob es WIRKLICH stimmt, sagen Sie mit „Stimmt/Falsch“ bei jeder Zeile.', 'klein'));
 const liste = abw.length ? el('section', { className: 'karte' }, el('h2', { textContent: 'Abweichungen' }), el('ul', { className: 'posten' }, ...abw.map(([n, r]) => el('li', {}, el('span', {}, `${n}. ${r.name}`, el('small', { textContent: `Gesagt: ${r.quelle ? '„' + V.lese.slice(r.quelle[0], r.quelle[1]) + '“' : '—'} · Auf der Rechnung: ${r.rechnung}${r.hinweis ? ' · ' + r.hinweis : ''}` })), el('b', { textContent: stat[r.status][1] }))))) : null;
-const idx = T.protokoll.findIndex((x) => x.id === V.id); const eintrag = { id: V.id, text: V.text, ok: sumOk, n: sumN, richtig, bewertet }; if (idx < 0) T.protokoll.push(eintrag); else T.protokoll[idx] = eintrag;
-const gOk = T.protokoll.reduce((a, x) => a + x.ok, 0), gN = T.protokoll.reduce((a, x) => a + x.n, 0), gB = T.protokoll.reduce((a, x) => a + x.bewertet, 0), gR = T.protokoll.reduce((a, x) => a + x.richtig, 0);
-const proto = el('section', { className: 'karte' }, el('h2', { textContent: `Alle Tests in dieser Sitzung (${T.protokoll.length})` }), p(`Zusammen: ${gOk} von ${gN} Angaben sicher übernommen` + (gB ? ` · Ihre Bewertung: ${gR} von ${gB} richtig` : ''), 'gross'),
-el('ul', { className: 'posten' }, ...T.protokoll.map((x) => el('li', {}, el('span', {}, `„${x.text.slice(0, 70)}“`), el('b', { textContent: `${x.ok}/${x.n}` })))),
-T.vorschlaege.length ? p(`Vorschläge an den Chef (ohne Preis): ${T.vorschlaege.join(', ')}`, 'klein') : null,
-p('Nur im Arbeitsspeicher; beim Neuladen der Seite weg. Testkunden dieser Sitzung: ' + T.kunden.slice(KUNDEN.length).join(', ') || 'keine', 'klein'),
-knopf('Testdaten zurücksetzen', 'knopf-still', () => { T.kunden = KUNDEN.slice(); T.rech = []; T.vorschlaege = []; T.protokoll = []; T.ctx = null; V.befehle = []; aus.replaceChildren(); }));
-if (schlank) aus.replaceChildren(...teile); else aus.replaceChildren(...teile, ...[zahlenKarte()].filter(Boolean), kopfSumme, ...(liste ? [liste] : []), proto, lernKarte()); assistent(bzs);
+if (schlank) aus.replaceChildren(...teile); else aus.replaceChildren(...teile, ...[zahlenKarte()].filter(Boolean), ...(liste ? [liste] : []), lernKarte()); assistent(bzs);
 }
 if (schlank && typeof vorgabe === 'string' && vorgabe.trim()) { feld.value = vorgabe; auswerten(vorgabe.trim(), null); }
 window.__sprachtest = { auswerten, V, rechne, uebernehmen };
@@ -3002,6 +3001,7 @@ S = neu(); ersetze('web'); await tick(); await klick('Elektro (Beispiel)'); ok(t
 S = neu(); verlauf.length = 0; ersetze('start'); await tick();
 await klick('Fragen überspringen'); ok(text().includes('Guten Tag'), 'Überspringen führt zu Heute');
 await klick('Sprechen'); ok(!!document.querySelector('.bsp'), 'Banner überall');
+await klick('Sprechen', '.sprechtaste'); ok(text().includes('in Safari öffnen') || text().includes('Nur Testdaten'), 'Leiste Sprechen: nie stumm');
 const tippe = async (s) => { const t = s.toLowerCase(); if (/bezahl|offen/.test(t) && !/rechnung f|angebot/.test(t)) zeige('antwort', 'offen'); else zeige('entwurf', s); await tick(); await tick(); };
 await klick('Tippen', '.dock button'); document.getElementById('tippfeld').value = 'Rechnung für Frau Beispiel: Siphon getauscht, 1 Stunde, ohne Anfahrt'; document.getElementById('tippbar').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); await tick(); await tick();
 ok(text().includes('Was haben Sie gemacht?') && text().includes('Wie viele Aufträge sind in Ihrem Diktat?') && !text().includes('Trefferquote'), 'Tippen unten = derselbe Diktat-Weg wie Sprechen');
@@ -3046,32 +3046,32 @@ ok(text().includes('ungewöhnlicher Stundensatz') && [...root.querySelectorAll('
 await sa('Rechnung für Frau Beispiel zwei Stunden, ohne Anfahrt, kein Material, heute. Die Rechnung brauch ich aber noch nicht.');
 ok(text().includes('⚠ Art:'), 'Art passt nicht zum Wortlaut: ⚠ auf der Geldkarte');
 await sa('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden, ohne Anfahrt, heute', 0);
-ok(text().includes('Wie viele Aufträge sind in Ihrem Diktat?') && !ue() && !root.querySelector('.test-befehl'), 'B: zuerst nur die Auftragszahl, nichts übernehmbar'); await klick('1 Auftrag');
-ok(text().includes('Vorschlag aus dem Diktat: 1,5 Std.') && ue().disabled, 'B: eine Zeit = sichtbare Vorbelegung, gesperrt bis bestätigt');
-{ const r0 = T.rech.length; ST.uebernehmen(ST.V.befehle[0]); ok(T.rech.length === r0, 'B: zentrale Sperre speichert nichts Unbestätigtes'); }
+ok(text().includes('Wie viele Aufträge sind in Ihrem Diktat?') && !ue() && !root.querySelector('.test-befehl'), 'B: erst Auftragszahl'); await klick('1 Auftrag');
+ok(text().includes('Vorschlag aus dem Diktat: 1,5 Std.') && ue().disabled, 'B: Vorbelegung markiert');
+{ const r0 = T.rech.length; ST.uebernehmen(ST.V.befehle[0]); ok(T.rech.length === r0, 'B: zentrale Sperre'); }
 ok(text().includes('Rechenprobe: ✓') && text().includes('118,00 €') && text().includes('140,42 €') && !document.querySelector('.test-rot, .test-gelb'), 'Sprachtest: saubere Rechnung + Rechenprobe');
 ok([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Alle Geldangaben einzeln')).disabled, 'Geldkarte: ohne alle Haken gesperrt (kein Sammelknopf)');
 ok(text().includes('Anfahrt berechnen?') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Anfahrt: Pflichtfrage ohne gesagten Betrag sperrt Übernehmen');
-await geldOk('Stunden bestätigen'); ok(ue().disabled, 'B: alles bestätigt außer Gesamtzeit = gesperrt'); await klick('Stunden bestätigen', '.rueckfragen button'); await klick('Entwurf übernehmen'); ok(T.rech.length === 1 && text().includes('Vorgemerkt (Beispiel)'), 'Sprachtest: fiktiv übernommen');
-await sa('Bei Frau Beispiel zwei Stunden, eine Dichtung. Der Hübner braucht noch ein Angebot.', 0); ok(text().includes('Auch genannt: Hübner'), 'Diktat-Spiegel: angehängter Name bei der Auftragszahl sichtbar'); await klick('1 Auftrag'); ok(!!root.querySelector('u.fremd'), 'Diktat-Spiegel: Name im Diktat unterstrichen');
+await geldOk('Stunden bestätigen'); ok(ue().disabled, 'B: ohne Gesamtzeit gesperrt'); await klick('Stunden bestätigen', '.rueckfragen button'); await klick('Entwurf übernehmen'); ok(T.rech.length === 1 && text().includes('Vorgemerkt (Beispiel)'), 'Sprachtest: fiktiv übernommen');
+await sa('Bei Frau Beispiel zwei Stunden, eine Dichtung. Der Hübner braucht noch ein Angebot.', 0); ok(text().includes('Auch genannt: Hübner'), 'Diktat-Spiegel: angehängter Name bei der Auftragszahl sichtbar'); await klick('1 Auftrag'); ok(!!root.querySelector('u.fremd'), 'Spiegel u.fremd');
 await sa('Bitte für Frau Beispiel eineinhalb Stunden und zwei Dichtungen festhalten, Termin am 23. Oktober.'); ok(text().includes('Termin oder erledigte') && !T.termine.some((x) => x.datum === '2026-10-23'), 'Termin+Arbeit: Rückfrage');
-{ const zwei = 'Für Frau Beispiel eine Rechnung, zwei Stunden, eine Dichtung. Ach und der Lindhof, Angebot, Pumpe.', r0 = T.rech.length + T.auftraege.length; await sa(zwei, 0); ok(text().includes('⚠ Ich höre 2 Aufträge in einem Diktat.'), 'B: Zahlfrage zeigt, was die Regeln hören'); await klick('2 oder mehr Aufträge'); ok(text().includes('jeden Auftrag einzeln neu diktieren') && !kn('1 Auftrag') && !ue(), 'B: „2 oder mehr“ = nichts übernehmbar');
-await klick('Doch nur einer'); ok(text().includes('✓ 1 Auftrag bestätigt') && ue().disabled && T.rech.length + T.auftraege.length === r0, 'B: „Doch nur einer“ = neu gelesen, gesperrt bis alles bestätigt'); }
+{ const zwei = 'Für Frau Beispiel eine Rechnung, zwei Stunden, eine Dichtung. Ach und der Lindhof, Angebot, Pumpe.', r0 = T.rech.length + T.auftraege.length; await sa(zwei, 0); ok(text().includes('⚠ Ich höre 2 Aufträge in einem Diktat.'), 'B: Regel-Hinweis'); await klick('2 oder mehr Aufträge'); ok(text().includes('jeden Auftrag einzeln neu diktieren') && !kn('1 Auftrag') && !ue(), 'B: 2+ nichts');
+await klick('Doch nur einer'); ok(text().includes('✓ 1 Auftrag bestätigt') && ue().disabled && T.rech.length + T.auftraege.length === r0, 'B: Doch nur einer'); }
 await sa('Für Frau Beispiel eine Rechnung, eine Stunde Ausbau und dann noch zwei Stunden Einbau, kein Material.'); { const f = root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]');
-ok(f && f.value === '' && text().includes('„eine Stunde“ · „zwei Stunden“') && text().includes('nicht zusammen') && ue().disabled, 'B: mehrere Zeiten = Gesamtzeit leer, beide Stellen sichtbar, gesperrt');
-await stdSetze(''); ok(!!root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]') && ue().disabled, 'B: leere Gesamtzeit wird abgelehnt (nie 0)'); await stdSetze('3'); await klick('Zur Kenntnis genommen'); await geldOk('Stundensatz bestätigen'); ok(ue().disabled, 'B: alles bestätigt außer Stundensatz = gesperrt'); await klick('Stundensatz bestätigen', '.rueckfragen button'); const r0 = T.rech.length, nt = 3 * satzCent(); await klick('Entwurf übernehmen');
-ok(T.rech.length === r0 + 1 && T.rech[r0].brutto === nt + mwst(nt), 'B: gespeichert mit eingegebenen 3 Std., nicht 1, 2 oder still addiert'); }
-await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde, ohne Anfahrt'); ST.V.temp = { [LERNSCHLEIFE.stamm('Siphons')]: 'dichtung' }; ST.rechne(); ok(ST.V.lese !== ST.V.text && ST.V.einAuftrag === true, 'B: Wörterbuch ändert die Lesart, nicht die bestätigte Auftragszahl'); ST.auswerten('Rechnung für Frau Beispiel: drei Siphons, eine Stunde', null); ok(ST.V.einAuftrag === null, 'B: neues Diktat = Auftragszahl neu fragen');
-await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde zu 80 Euro die Stunde, ohne Anfahrt'); await stdSetze('0'); ok(!kn('Stundensatz bestätigen') && !ST.V.befehle[0].stunden, 'B: Gesamtzeit 0 = keine Arbeitszeit, kein Stundensatz gefragt'); await geldOk(); ok(!ue().disabled, 'B: Gesamtzeit 0 mit gesagtem Satz = keine Sackgasse');
-await sa('Für Frau Beispiel eine Rechnung, eine Stunde Ausbau, dann eine Stunde Einbau und 1,5 Stunden Prüfung, kein Material.'); ok(text().includes('„eine Stunde“ · „eine Stunde“ · „1,5 Stunden“'), 'B: „Im Diktat“ zeigt jede Zeitstelle, auch Wiederholung und Komma');
-await sa('Bei Frau Beispiel zwei Stunden, Anfahrt 25 Euro'); await geldOk(); ok(ue().disabled && !!kn('Ja, 25,00 € Anfahrt nur für diese Rechnung'), 'B: gesagte Anfahrt in Standardhöhe braucht Bestätigung');
-{ const b = ST.V.befehle[0]; await klick('Ja, 25,00 € Anfahrt nur für diese Rechnung'); ST.V.eing[b.satz + '|anfahrt'] = false; ST.rechne(); ok(ST.V.befehle[0].anfahrt === false, 'B: „keine Anfahrt“ gewinnt über bestätigten Betrag'); }
-await sa('Kunde anlegen Frau Weber und dann Rechnung erstellen'); ok(text().includes('Bitte einzeln diktieren') && !ue(), 'B: Veto im A-Zweig trotz „1 Auftrag“ (Kunde + Rechnung) = nichts übernehmbar');
+ok(f && f.value === '' && text().includes('„eine Stunde“ · „zwei Stunden“') && text().includes('nicht zusammen') && ue().disabled, 'B: Zweitzeit leer');
+await stdSetze(''); ok(!!root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]') && ue().disabled, 'B: leer nie 0'); await stdSetze('3'); await klick('Zur Kenntnis genommen'); await geldOk('Stundensatz bestätigen'); ok(ue().disabled, 'B: ohne Satz gesperrt'); await klick('Stundensatz bestätigen', '.rueckfragen button'); const r0 = T.rech.length, nt = 3 * satzCent(); await klick('Entwurf übernehmen');
+ok(T.rech.length === r0 + 1 && T.rech[r0].brutto === nt + mwst(nt), 'B: 3 Std. gespeichert'); }
+await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde, ohne Anfahrt'); ST.V.temp = { [LERNSCHLEIFE.stamm('Siphons')]: 'dichtung' }; ST.rechne(); ok(ST.V.lese !== ST.V.text && ST.V.einAuftrag === true, 'B: Wörterbuch'); ST.auswerten('Rechnung für Frau Beispiel: drei Siphons, eine Stunde', null); ok(ST.V.einAuftrag === null, 'B: neues Diktat');
+await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde zu 80 Euro die Stunde, ohne Anfahrt'); await stdSetze('0'); ok(!kn('Stundensatz bestätigen') && !ST.V.befehle[0].stunden, 'B: 0 Std.'); await geldOk(); ok(!ue().disabled, 'B: 0 Std. keine Sackgasse');
+await sa('Für Frau Beispiel eine Rechnung, eine Stunde Ausbau, dann eine Stunde Einbau und 1,5 Stunden Prüfung, kein Material.'); ok(text().includes('„eine Stunde“ · „eine Stunde“ · „1,5 Stunden“'), 'B: alle Zeitstellen');
+await sa('Bei Frau Beispiel zwei Stunden, Anfahrt 25 Euro'); await geldOk(); ok(ue().disabled && !!kn('Ja, 25,00 € Anfahrt nur für diese Rechnung'), 'B: Anfahrt bestätigen');
+{ const b = ST.V.befehle[0]; await klick('Ja, 25,00 € Anfahrt nur für diese Rechnung'); ST.V.eing[b.satz + '|anfahrt'] = false; ST.rechne(); ok(ST.V.befehle[0].anfahrt === false, 'B: keine Anfahrt gewinnt'); }
+await sa('Kunde anlegen Frau Weber und dann Rechnung erstellen'); ok(text().includes('Bitte einzeln diktieren') && !ue(), 'B: Veto');
 await sa('Ich wollte einen Jutt. Ich möchte eine Rechnung für mein Kunden erstellen lassen. Ich habe jetzt fünf Stunden bei ihm gearbeitet. Pro Stunde haben wir mit ihm ausgemacht, dass ich 120 Euro koste. Mein Kunde ist: Herr Bauer aus Weiblingen von der Hauptstraße 15. Ich habe selber keine Materialien benutzt. Ich habe nur meine Arbeitsstunden drin gehabt und ich möchte diese im Rechnung stellen.');
 ok(text().includes('Herr Bauer') && text().includes('Weiblingen') && text().includes('Hauptstraße 15') && text().includes('keins (so gesagt)') && !text().includes('nicht in Ihrer Preisliste') && text().includes('✓ 1 Auftrag bestätigt') && document.querySelectorAll('.test-befehl').length === 1, 'Sprachtest Bauer: ein Auftrag, Kunde/Ort/Straße, kein Material bewusst');
 ok([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Sprachtest Bauer: Stundensatz/Kunde erst bestätigen');
-{ const k0 = T.kunden.length; await sa(ST.V.text, 2); ok(!kn('Ja, Herr Bauer neu anlegen') && T.kunden.length === k0, 'Nein: keine Kundenanlage'); ST.auswerten(ST.V.text, null); await tick(); ok(ST.V.einAuftrag === false && !kn('Ja, Herr Bauer neu anlegen'), 'Nein gilt nach „Neu auswerten“ desselben Texts weiter'); await klick('Doch nur einer'); }
-ok(text().includes('Vorschlag aus dem Diktat: 5 Std.'), 'B: Doch nur einer = neu gelesen, Gesamtzeit vorbelegt');
+{ const k0 = T.kunden.length; await sa(ST.V.text, 2); ok(!kn('Ja, Herr Bauer neu anlegen') && T.kunden.length === k0, 'Nein: keine Kundenanlage'); ST.auswerten(ST.V.text, null); await tick(); ok(ST.V.einAuftrag === false && !kn('Ja, Herr Bauer neu anlegen'), 'Nein bleibt'); await klick('Doch nur einer'); }
+ok(text().includes('Vorschlag aus dem Diktat: 5 Std.'), 'B: Doch nur einer Bauer');
 await klick('Ja, Herr Bauer neu anlegen'); await geldOk();
 ok(text().includes('600,00 €') && text().includes('714,00 €') && text().includes('Rechenprobe: ✓') && !document.querySelector('.test-rot, .test-gelb') && !([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled) && satzCent() === 6000, 'Sprachtest Bauer: 5 × 120 € = 600 €, Stammdaten unverändert');
 await sa('Wer hat noch nicht bezahlt?'); ok(text().includes('Offene Rechnungen') && /RE-\d{4}-0001/.test(text()), 'Sprachtest: offene Rechnungen (festgeschriebene Nummer)');
@@ -3101,12 +3101,24 @@ kiAn = true; window.KI_AUFTRAG = async () => ({ auftraege: [{ typ: 'erfassen', k
 await sa('Bei Frau Beispiel zwei Stunden, einen Siphon getauscht'); await tick(); await tick(); await tick();
 ok(text().includes('Gelesen von Regeln UND KI') && text().includes('Regeln: 2 · KI: 3') && !!document.querySelector('.test-gelb') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Stufe 2: Uneinigkeit Regeln/KI = gelb + gesperrt');
 await klick('KI: 3', 'button'); ok(text().includes('3 Stunden') && !text().includes('Regeln: 2 · KI: 3'), 'Stufe 2: Kunde wählt KI-Wert');
-await sa('Bei Frau Beispiel zwei Stunden, einen Siphon getauscht'); await tick(); await tick(); await tick(); await stdSetze('4'); await klick('KI: 3', 'button'); ok(ST.V.befehle[0].stunden === 4, 'B: eingegebene Gesamtzeit gewinnt über später gewählten KI-Wert');
+await sa('Bei Frau Beispiel zwei Stunden, einen Siphon getauscht'); await tick(); await tick(); await tick(); await stdSetze('4'); await klick('KI: 3', 'button'); ok(ST.V.befehle[0].stunden === 4, 'B: Eingabe vor KI');
 window.KI_AUFTRAG = async () => ({ auftraege: [{ typ: 'erfassen', kunde: 'Frau Beispiel', stunden: 2, material: [{ text: 'Siphon', menge: 1 }] }] });
 await sa('Bei Frau Beispiel zwei Stunden, einen Siphon getauscht'); await tick(); await tick(); await tick(); ok(!text().includes('bitte entscheiden') && text().includes('Gelesen von Regeln UND KI'), 'Stufe 2: Einigkeit = nichts Gelbes vom Abgleich');
 window.KI_AUFTRAG = async () => { throw new Error('aus'); }; await sa('Bei Frau Beispiel zwei Stunden'); await tick(); await tick(); await tick(); ok(text().includes('KI nicht erreichbar – es gelten nur die Regeln'), 'Stufe 2: KI fällt aus = Regeln, ehrlicher Hinweis');
 delete window.KI_AUFTRAG;
 kiAn = true;
+{ const M = (art) => function () { const r = this; window.__srAb = 0; this.start = () => setTimeout(() => (art === 'leer' ? (r.onstart(), r.onend()) : art === 'haengt' ? r.onstart() : art ? r.onerror({ error: art }) : (r.onstart(), r.onresult({ results: [Object.assign([{ transcript: 'Rechnung für Frau Beispiel, zwei Stunden' }], { isFinal: true })] }), r.onend())), 5); this.stop = () => {}; this.abort = () => { window.__srAb += 1; }; };
+const alt = [window.SpeechRecognition, window.webkitSpeechRecognition], setz = (x) => { window.SpeechRecognition = window.webkitSpeechRecognition = x; }, sp = async (x) => { setz(x); zeige('diktat'); await tick(); await klick('Sprechen', '#sprechen-start'); await tick(); }, fe = () => document.activeElement.id === 'sprachtext';
+await sp(undefined); ok(text().includes('in Safari öffnen') && fe(), 'SR fehlt');
+await sp(M()); ok(text().includes('iPhone: Apple, Android/Chrome: Google') && text().includes('Nur Testdaten') && !document.querySelector('.uhr'), 'SR Hinweis');
+await klick('Verstanden, sprechen'); await tick(); const V2 = () => window.__sprachtest.V; ok(V2().text === 'Rechnung für Frau Beispiel, zwei Stunden' && V2().info.unsicher && text().includes('Wie viele Aufträge'), 'SR Text');
+await klick('Prüfen'); ok(V2().info && V2().info.unsicher, 'SR Prüfen');
+await sp(M('leer')); document.getElementById('sprachtext').value = 'Alter Auftrag'; await klick('Sprechen', '#sprechen-start'); await tick(); ok(document.getElementById('sprachtext').value === 'Alter Auftrag' && text().includes('Nichts verstanden') && !V2().text, 'SR leer');
+await sp(M('service-not-allowed')); ok(text().includes('in Safari öffnen') && fe(), 'SR Fehler');
+await sp(M('haengt')); window.dispatchEvent(new Event('pagehide')); await tick(); ok(window.__srAb === 1 && !!document.getElementById('sprechen-start'), 'SR pagehide aus');
+T.srMs = 50; await sp(M('haengt')); await klick('Fertig'); await new Promise((r) => setTimeout(r, 150)); ok(window.__srAb === 1 && text().includes('Nichts verstanden'), 'SR Fertig-Watchdog'); T.srMs = 0;
+await sp(M('haengt')); zeige('heute'); await new Promise((r) => setTimeout(r, 1100)); ok(window.__srAb === 1, 'SR Seitenwechsel');
+[window.SpeechRecognition, window.webkitSpeechRecognition] = alt; T.srJa = false; }
 tbStarten(); await tick(); ok(text().includes('TESTBETRIEB') && text().includes('Bitte zuerst Ihren Stundensatz') && !text().includes('Diktat aufnehmen'), 'Testbetrieb: erst eigene Werte');
 zeige('diktat'); await tick(); ok(!text().includes('Was haben Sie gemacht?') && text().includes('Bitte zuerst') && S.rech.length === 0 && !Object.keys(PREISLISTE).length, 'Testbetrieb: kein Diktat ohne eigene Werte, keine Demo-Rechnungen/-Preise');
 document.getElementById('tb-anf').value = ''; document.getElementById('tb-satz').value = '70'; await klick('Werte speichern'); ok(S.anfahrtCent == null && text().includes('Anfahrt 0–500'), 'Testbetrieb: leere Anfahrt ist nicht 0');
