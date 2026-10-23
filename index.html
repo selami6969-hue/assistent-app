@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nkW+dUDx5g5a5lWl0xddV2aFH4zCquYVopx/tBGhsYk=' 'sha256-qTfI/6t5SH+Iyx0blxE1JZfZdw6X1IQ9hN6oXbEjSAw=' 'sha256-4FTtSVGDRAbPysbbjSO8psI3rrm++I6GV0O4qDj6tsQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nkW+dUDx5g5a5lWl0xddV2aFH4zCquYVopx/tBGhsYk=' 'sha256-D9tdK3Rlg2KUnLXjNAx1qeBDcc6Ars05gCysgch9FEw=' 'sha256-4FTtSVGDRAbPysbbjSO8psI3rrm++I6GV0O4qDj6tsQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#F4F5EF">
@@ -1326,7 +1326,7 @@ return Object.keys(namen).length >= 2 && (/\b(?:Rechnung|Angebot)\s+(?:für|fuer
 }
 var nGanz = nm(text), mehrereKunden = (text.match(/\b(?:Herrn?|Frau|Familie|Firma)\s+[A-ZÀ-ÖØ-ÞĀ-ſ]/g) || []).length > 1;
 if (!mehrereKunden && !/\b(?:rechnung|angebot|kostenvoranschlag|abrechn\w*|aufwand|erfass\w*|kunde\w*\s+anleg\w*|anlegen)\b/.test(nGanz) && teile(text).length > 1 && istTermin(nGanz, '', text) && !res.length) {
-var tg = terminBefehl(text, liste, heute, letzterKunde); tg.satz = text; tg.start = 0; res.push(tg); if (terminArbeit(res, text)) return terminArbeitAbl(text); res.zahlen = ZAHLEN_M.bilanz(text, res); return res;
+var tg = terminBefehl(text, liste, heute, letzterKunde); tg.satz = text; tg.start = 0; res.push(tg); if (!terminArbeit(res, text)) { res.zahlen = ZAHLEN_M.bilanz(text, res); return res; } if (!(ctx && ctx.mensch)) return terminArbeitAbl(text); res = [];
 }
 var segs = teile(text).reduce(function(acc, sg) { return acc.concat(zerlege(sg)); }, []), vorspann = null;
 (function() {
@@ -1453,12 +1453,40 @@ var teilMehr = auftr.length >= 1 && arbeitsTeile(text) > auftr.length;
 var einM = /(?:^|[,;.]\s*)ein(?:en)?\s+(?:auftrag|einsatz)\s*(?=[.,;!]|$)|\balles\s+(?:an|bei|in|auf|im|am)\s+(?:de[mnrs]\s+)?(?:selben|derselben|demselben|gleichen)\b/gi, phasen = ctx && ctx.zaehler === 1 && teilMehr && (EIN_AUFTRAG.test(text) || einM.test(text)) && !trennT(text.replace(einM, ' ')) && !ANGEH.test(text) && (text.match(/auftrags?(?:nummer|nr)/gi) || []).length < 2;
 var pflicht = function(a1) { var teile = (text.match(/[\wäöüß']+\s+(?:halbe[n]?\s+)?(?:stund(?:en?)?|minuten)\b|[\wäöüß]*viertelstunde/gi) || []).map(function(x) { return x.trim(); }).filter(function(x) { return !/^(?:die|pro|je|der|jede|per|zur|zu)\s/i.test(x); });
 a1.stunden = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { if (a1.unsicher.indexOf(u) < 0) a1.unsicher.push(u); }); a1.zeitTeile = teile;
+var gz = ctx && ctx.mensch && /\b(?:insgesamt|zusammen|gesamt|alles\s+in\s+allem|in\s+summe|summa\s+summarum)\b\s*(?:(?:waren|sind|macht|machte|also|es|das|genau|dann|ich|hab|habe|war|sinds|wars|warens|ca|circa)\s+){0,3}([^.,;!?]{1,40})/i.exec(a1.satz || text), gv = gz && gesamtWert(gz[1]);
+if (gv > 0 && gv <= 24) { a1.stunden = gv; a1.gesamtGenannt = gz[0].trim(); }
 a1.rueckfragen.unshift((teile.length >= 2 ? 'Ich höre ' + teile.length + ' Zeitangaben (' + teile.join(' + ') + ')' : 'Ich höre mehrere Zeitangaben') + '. Wie viele Stunden insgesamt? Ohne Gesamtzeit speichere ich nichts.'); };
+var aufteilenJe = function() { auftr.forEach(function(a) { var tz = (String(a.satz || '').match(/[\wäöüß']+\s+(?:halbe[n]?\s+)?(?:stund(?:en?)?|minuten)\b|[\wäöüß]*viertelstunde/gi) || []).filter(function(x) { return !/^(?:die|pro|je|der|jede|per|zur|zu)\s/i.test(x); }); if (tz.length >= 2) { a.stunden = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { if (a.unsicher.indexOf(u) < 0) a.unsicher.push(u); }); a.zeitTeile = tz; } }); };   /* Zwei-Kunden-Vorschlag: je Kunde ein Entwurf, mehrere Zeiten je Entwurf = Gesamtzeit Pflicht */
+var teilenNachNamen = function() {
+var c = [], m, rxA = /\b(?:Herrn?|Frau|Familie|Firma)\s+([A-ZÀ-ÖØ-ÞĀ-ſ][A-Za-zÀ-ÖØ-öø-ſ-]+)/g, rxO = /([A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ]{2,})(?=\s+(?:[A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ-]+\s+\d+[a-z]?\s+)?in\s+[A-ZÀ-ÖØ-ÞĀ-ſ])/g;
+while ((m = rxA.exec(text))) c.push({ i: m.index, k: nm(m[1]), n: m[0].replace(/^Herrn\s/, 'Herr ') });
+if (ctx.namenTeilen) while ((m = rxO.exec(text))) { var vor = text.slice(0, m.index).trim().split(/\s+/).pop() || ''; if (/^(?:Herrn?|Frau|Familie|Firma|den|die|das|dem|der|des|ein|eine|einen|einem|einer|im|am|zum|zur|vom|in|auf|an|nach|aus)$/i.test(vor) || /(?:ung|heit|keit|ion|zeit|arbeit(?:en)?|kontrolle|lauf|weg|rest)$/i.test(m[1]) || /^(?:stunden?|minuten?|einsatz\w*|eins(?:ä|ae)tze|arbeit\w*|auftr(?:a|ä|ae)g\w*|termin\w*|rechnung\w*|angebot\w*|anschrift|adresse|kund\w*|material\w*|baustelle|wohnung|haus|keller|bad|k(?:ü|ue)che|heizung|garage|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|morgen|heute|gestern|ich|wir|er|sie|es|war|waren|bin|dort|da|hier|danach|dann|also|jo|bitte|außerdem|ausserdem)$/i.test(m[1]) || verstehe(m[1], heute).material.length) continue; c.push({ i: m.index, k: nm(m[1]), n: m[1] }); }
+c.sort(function(x, y) { return x.i - y.i; });
+var ges = [], cut = -1, nam = [];
+for (var j = 0; j < c.length; j++) { var x = c[j], hinten = text.slice(x.i - 14 < 0 ? 0 : x.i - 14, x.i), danach = text.slice(x.i + x.n.length);
+if (/\bnicht\s+(?:an|für|fuer|bei|zu)\s*$/i.test(hinten) || /^[^.!?]{0,40}?\b(?:nichts|nicht\s+zu\s+tun|nur\s+aufgemacht|nur\s+aufgeschlossen)\b/i.test(danach)) continue;
+if (ges.indexOf(x.k) < 0) { if (ges.length) { cut = x.i; nam.push(x.n); break; } ges.push(x.k); nam.push(x.n); } }
+if (cut < 1) return; var b = /[,;.]?\s*(?:und|sowie)?\s*(?:für|fuer|bei|beim|an)?\s*$/.exec(text.slice(0, cut)); if (b) cut = b.index;
+var tl = [text.slice(0, cut).trim(), text.slice(cut).replace(/^[\s,;.]*(?:und|sowie)?\s*/, '').trim()], art = verstehe(text, heute).art; if (tl.some(function(y) { return y.length < 6; })) return;
+ohneAuftr(); tl.forEach(function(pt, i) { var e = erfassen(pt, liste, heute, { kunde: null }, verstehe, ki); e.satz = pt; e.start = Math.max(0, text.indexOf(pt)); e.quellen = quellen(pt, e, verstehe); if (!e.art && art && art !== 'unklar') e.art = art;
+if (ctx.namenTeilen && nam[i] && (!e.kunde || nm(String(e.kunde)).indexOf(nm(nam[i]).split(' ').pop()) < 0)) { e.kunde = nam[i]; e.kundeStatus = 'neu'; if (e.unsicher.indexOf('kunde') < 0) e.unsicher.push('kunde'); }
+e.unsicher.push('komplex'); res.push(e); });
+auftr = res.filter(function(y) { return y.typ === 'erfassen' || y.typ === 'dokument'; });
+};
 var ohneAuftr = function() { res = res.filter(function(x) { return auftr.indexOf(x) < 0 && !(x.typ === 'termin' && (!x.kunde || auftr.some(function(y) { return y.kunde === x.kunde; }))); }); };
 if (ctx && ctx.modus === 'A' && !(ctx.zaehler === 0 && auftr.length)) {
 var vz = ctx.zaehler, veto = (ctx.zaehler2 != null && ctx.zaehler2 !== vz) || vz !== auftr.length || (soll && auftr.length < soll) || fehltName || zweitKriegt || trennT(text.replace(einM, ' ')) || ANGEH.test(text) || (text.match(/auftrags?(?:nummer|nr)/gi) || []).length >= 2;
 if (!veto && vz === 0) return;
 if (!veto && vz === 1) { if (mehrZeit) pflicht(auftr[0]); return; }
+if (ctx.aufteilen) { if (auftr.length < 2 || ctx.namenTeilen) teilenNachNamen(); aufteilenJe(); return; }
+var arbeitWort = /\b(?:erfass\w*|eintrag\w*|tr(?:a|ä)g\w*\b[^.!?]{0,40}\bein|schreib\w*\b[^.!?]{0,30}\b(?:auf|rechnung|angebot)|aufschreib\w*|notier\w*|buch\w*|abrechn\w*|(?:rechnung|angebot)\s+(?:f(?:ü|ue)r|an|über|ueber))\b/i.test(text.replace(/\b(?:offene\w*|unbezahlte\w*|ausstehende\w*)\s+rechnungen\b[^.!?]*/gi, ' '));
+if (ctx.mensch && !auftr.length && !(((kundeArbeit || zeiten >= 1) && !res.some(function(x) { return x.typ === 'offen'; }) && (!res.some(function(x) { return x.typ === 'termin'; }) || terminArbeit(res, text))) || (arbeitWort && !res.some(function(x) { return x.typ === 'termin'; })))) return;
+if (ctx.mensch && vz === 1) {
+var grund = vz !== auftr.length ? 'Ich lese ' + auftr.length + ' Auftragsteile' : trennT(text.replace(einM, ' ')) ? 'Ein Wort wie „dann noch“, „extra“ oder „separat“ klingt nach einem zweiten Auftrag' : 'Ich höre mehr als einen Namen oder Auftrag';
+ohneAuftr(); var e1 = erfassen(text, liste, heute, { kunde: ctx.kunde }, verstehe, ki); e1.satz = text; e1.start = 0; e1.quellen = quellen(text, e1, verstehe);
+['komplex', 'auftragszahl-warn'].forEach(function(u) { if (e1.unsicher.indexOf(u) < 0) e1.unsicher.push(u); }); e1.rueckfragen.unshift('Hinweis: ' + grund + '. Sie haben 1 Auftrag bestätigt – bitte jede Position, den Kunden und die Gesamtzeit genau prüfen.');
+res.push(e1); if (mehrZeit) pflicht(e1); return;
+}
 ohneAuftr(); res.push({ typ: 'unklar', satz: text, start: 0, unsicher: ['mehrere-kunden', 'auftragszahl'], rueckfragen: [!veto ? 'Ich höre ' + vz + ' Aufträge. Bitte einzeln diktieren – je Auftrag ein Diktat.' : 'Sind das 1 oder 2 Aufträge? Bitte einzeln diktieren – ich rate keine Zuordnung.'] }); return;
 }
 if (ctx && ctx.zaehler === 1 && (zeitSperre || fehltZeit || phasen) && auftr.length === 1 && !(soll >= 2) && !fehltName && !zweitKriegt && !zielMehr && !kundeArbeit && (!teilMehr || phasen) && namen.length <= 1) {
@@ -1471,7 +1499,7 @@ res.push({ typ: 'unklar', satz: text, start: 0, unsicher: ['mehrere-kunden'], ru
 (function() {
 var UHR = /\b(?:eins?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|dreizehn|vierzehn|fünfzehn|fuenfzehn|sechzehn|siebzehn|achtzehn|neunzehn|zwanzig|einundzwanzig|zweiundzwanzig|dreiundzwanzig)\s+uhr\b|\bum\s+(?:\d{1,2}|eins?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|dreizehn|vierzehn|fünfzehn|fuenfzehn|sechzehn|siebzehn|achtzehn|neunzehn|zwanzig|einundzwanzig|zweiundzwanzig|dreiundzwanzig)(?:[:.]\d{2})?(?:\s+uhr)?\b(?![.,]\d)(?!\s*(?:euro|eur|€|prozent|stunden?|minuten|stück|stueck|meter))|\b\d{1,2}:\d{2}\b|\b(?:viertel\s+(?:vor|nach)|halb)\s+(?:\d{1,2}|eins?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|dreizehn|vierzehn|fünfzehn|fuenfzehn|sechzehn|siebzehn|achtzehn|neunzehn|zwanzig|einundzwanzig|zweiundzwanzig|dreiundzwanzig)\b(?!\s*(?:stunden?|euro))|\b\d{1,2}\s+uhr\b/i;
 if (/^(?:rechnung erstellen|termin eintragen|kunde anlegen):/i.test(text)) return;
-if (terminArbeit(res, text)) { res = terminArbeitAbl(text); return; }
+if (terminArbeit(res, text) && !(ctx && ctx.mensch)) { res = terminArbeitAbl(text); return; }
 res.forEach(function(x) { var sz = x.satz || text; var zuk = /(?<!heute\s)\bmorgen\b|\b(?:übermorgen|uebermorgen|nächste\w*|naechste\w*|kommende\w*|zugesagt|kalender|vormerk\w*|einplan\w*|einplanen)\b|\bin\s+(?:einer|zwei|drei|vier|\d+)\s+wochen?\b/i.test(sz); if ((x.typ === 'erfassen' || x.typ === 'dokument') && ((UHR.test(sz) && (zuk || !TERMIN_VERGANGEN.test(nm(sz)))) || ((/\b(?:leg|trag|mach|setz)\w*\s+(?:\S+\s+){0,2}\S*termin\b|termin\s+(?:\S+\s+){0,3}(?:an|anlegen|eintragen|ein|ausmachen)\b/i.test(text) || (UHR.test(text) && /\b(?:einbuch\w*|einplan\w*|vormerk\w*)\b/i.test(text))) && (zuk || !TERMIN_VERGANGEN.test(nm(text))))) && !res.some(function(y) { return y.typ === 'termin' && y.kunde && y.kunde === x.kunde; })) { x.unsicher.push('termin-frage'); x.rueckfragen.push('Im Diktat steht eine Uhrzeit. Ist das ein Termin? Dann bitte als Termin diktieren. Sonst „Stimmt“ – ich trage keinen Termin ein.'); }
 else if ((x.typ === 'erfassen' || x.typ === 'dokument') && /\btrag\w*\b[^.!?]{0,40}?\bein\b/i.test(sz) && (zuk || /\b(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/i.test(sz)) && !TERMIN_VERGANGEN.test(nm(sz))) { x.unsicher.push('termin-frage'); x.rueckfragen.push('Klingt nach einem Tag in der Zukunft. Ist das ein Termin? Dann bitte als Termin diktieren. Sonst „Stimmt“ – ich erfasse es als Arbeit.'); } });
 })();
@@ -1479,6 +1507,7 @@ res.forEach(function(x) { if ((x.typ === 'erfassen' || x.typ === 'dokument') && 
 var artZweifel = function(s, art) { s=s.toLowerCase().replace(/\b(?:offen\w*|unbezahlt\w*|ausstehend\w*)\s+rechnungen\b|\brechnungen\b[^.!?]{0,40}?\b(?:offen|aussteh\w*|zahlung)|\b(?:nicht|kein\w*|nichts)\s+(?:\S+\s+){0,2}?in\s+rechnung\s+(?:ge)?stell\w*|\b(?:anfahrt\w*|fahrt\w*|fahrerei|weg\w*|strecke|herkommen|kilometer)\b[^.!?]{0,40}?\bberechn\w*|\bberechn\w*\s+(?:\S+\s+){0,3}?(?:anfahrt\w*|fahrt\w*|fahrerei|weg\w*|strecke)\b|\b(?:nicht|nichts|kein\w*)\s+(?:\S+\s+){0,2}?berechn\w*/g,' ');var neg=/\b(?:keine?n?|noch\s+keine?n?|ohne|nich|nicht\s+als)\s+(?:\S+\s+)?(?:rechnung|angebot)\b|\b(?:nur|lediglich|bloss|bloß|ausschlie\w*)\s+(?:\S+\s+){0,3}?(?:erfass|aufnehm|notier|aufschreib|eintrag|ein\b|festhalt)|\bnoch\s+nicht\s+(?:abrechn|in\s+rechnung)|\b(?:erst\s*mal|zunächst|zunaechst)\s+(?:nur\s+)?(?:\S+\s+){0,4}?(?:erfass|aufnehm|ein\b)|\b(?:rechnung|angebot)\s+(?:\S+\s+){0,4}?(?:kommt\s+(?:erst\s+)?sp|noch\s+nicht|erst\s+sp|später|spaeter)|\b(?:rechnung|angebot|abrechn\w*)\s*,?\s+(?:\S+\s+){0,3}?(?:nicht|nich|vergiss|lassen\s+wir|weg\s*lassen|sparen)\b|\bnicht\s+(?:\S+\s+)?abrechn|\b(?:kunde|der|die|sie|er)\s+(?:\S+\s+){0,2}?braucht\s+(?:aber\s+)?keine/.test(s);var wort=/\b(?:rechnung|angebot|kostenvoranschlag|abrechn\w*|anzubieten|anbieten|bietest|fakturier\w*|in\s+rechnung|berechn\w*)\b|\brechne\w*\s+(?:\S+\s+){0,8}?ab\b/.test(s);return art?(neg||!wort):(wort&&!neg); };
 res.forEach(function(x) { if ((x.typ === 'erfassen' || x.typ === 'dokument') && x.art !== 'unklar' && x.unsicher.indexOf('art-zweifel') < 0 && artZweifel(text, x.art || (x.typ === 'dokument' ? 'rechnung' : null))) x.unsicher.push('art-zweifel'); });
 res = res.filter(function(x, i) { return !(x.typ === 'kunde' && x.nameGeraten && res.some(function(y, j) { return j > i && y.typ === 'kunde' && !y.nameGeraten; })); });
+if (ctx && ctx.mensch && res.every(function(x) { return x.typ === 'unklar' && (x.unsicher || []).indexOf('befehl') >= 0; }) && /\b(?:erfass\w*|rechnung|angebot|leistung|auftrag|einsatz|arbeit\w*|aufschreib\w*|aufnehm\w*|eintrag\w*|notier\w*|buch\w*|abrechn\w*|wartung\w*)\b/i.test(text)) { var e0 = erfassen(text, liste, heute, { kunde: ctx.kunde }, verstehe, ki); e0.satz = text; e0.start = 0; e0.quellen = quellen(text, e0, verstehe); e0.unsicher.push('komplex'); res = [e0]; }
 if (!res.length) res.push({ typ: 'unklar', satz: text, start: 0, unsicher: ['befehl'], rueckfragen: ['Ich habe nichts verstanden. Bitte nochmal sprechen oder tippen.'] });
 if (ZAHLEN_M) {
 var bil = ZAHLEN_M.bilanz(text, res); res.zahlen = bil;
@@ -1490,10 +1519,76 @@ var aw = res.filter(function(x) { return x.typ === 'erfassen' || x.typ === 'doku
 if (ctx && ctx.modus === 'A' && aw.length === 1 && zo.length && aw[0].stunden != null && aw[0].unsicher.indexOf('zeiten-mehrere') < 0) { aw[0].stunden = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { aw[0].unsicher.push(u); }); aw[0].rueckfragen.unshift('Im Diktat steht noch eine Zahl ohne Zuordnung (' + zo.map(function(z) { return z.text; }).join(', ') + '). Wie viele Stunden insgesamt? Ohne Gesamtzeit speichere ich nichts.'); }
 }
 var nAuf = res.filter(function(x) { return x.typ === 'erfassen' || x.typ === 'dokument'; }).length;
-if (ctx && ctx.zaehler > nAuf && !res.some(function(x) { return x.typ === 'unklar'; })) return [{ typ: 'unklar', satz: text, start: 0, unsicher: ['mehrere-kunden'], rueckfragen: ['Ich höre ' + (ctx.zaehler === 1 ? 'einen Auftrag' : ctx.zaehler + ' Aufträge') + ' in einem Diktat. Bitte einzeln diktieren – je Auftrag ein Diktat.'] }];
+if (ctx && !ctx.mensch && ctx.zaehler > nAuf && !res.some(function(x) { return x.typ === 'unklar'; })) return [{ typ: 'unklar', satz: text, start: 0, unsicher: ['mehrere-kunden'], rueckfragen: ['Ich höre ' + (ctx.zaehler === 1 ? 'einen Auftrag' : ctx.zaehler + ' Aufträge') + ' in einem Diktat. Bitte einzeln diktieren – je Auftrag ein Diktat.'] }];
 return res;
 }
-var api = { anfahrtBetragIn: anfahrtBetragIn, befehl: befehl, findeKunde: findeKunde, teile: teile, quellen: quellen, stundensatzIn: stundensatzIn, stundensatzAntwort: stundensatzAntwort, wortzahlen: wortzahlen };
+function gesamtWert(span) {
+var t = nm(String(span || '')).replace(/[‘’'\u0060´]/g, '').replace(/\b(?:gebraucht|gearbeitet|gedauert|lang|ungefaehr\w*)\b.*$/, function(m) { return /^ungef/.test(m) ? ' ?' : ''; }).replace(/\s+/g, ' ').trim();
+if (/\?/.test(t)) return null;
+var E = { ein: 1, eine: 1, einer: 1, ne: 1, zwei: 2, zwo: 2, drei: 3, vier: 4, fuenf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwoelf: 12, fuenfzehn: 15, zwanzig: 20, dreissig: 30, vierzig: 40, fuenfzig: 50 };
+var zahl = function(w) { if (/^\d+(?:[.,]\d+)?$/.test(w)) return Number(w.replace(',', '.')); if (E[w] != null) return E[w]; var m = /^(ein|zwei|drei|vier|fuenf|sechs|sieben|acht|neun)und(zwanzig|dreissig|vierzig|fuenfzig)$/.exec(w); if (m) return E[m[1] === 'ein' ? 'ein' : m[1]] + E[m[2]]; m = /^(dreizehn|vierzehn|sechzehn|siebzehn|achtzehn|neunzehn)$/.exec(w); return m ? { dreizehn: 13, vierzehn: 14, sechzehn: 16, siebzehn: 17, achtzehn: 18, neunzehn: 19 }[w] : null; };
+var bruch = function(w) { if (w === 'anderthalb') return 1.5; if (w === 'dreiviertel') return 0.75; if (w === 'viertel') return 0.25; if (/^halbe?n?$/.test(w)) return 0.5; var m = /^(ein|zwei|drei|vier|fuenf|sechs|sieben|acht|neun|zehn)ein(halb|viertel)$/.exec(w) || /^(ein|zwei|drei|vier|fuenf|sechs|sieben|acht|neun|zehn)(dreiviertel)$/.exec(w); return m ? E[m[1]] + { halb: 0.5, viertel: 0.25, dreiviertel: 0.75 }[m[2]] : null; };
+var m;
+if ((m = /^(?:eine\s+|ne\s+)?(dreiviertel|halb|viertel)stunde$/.exec(t))) return { dreiviertel: 0.75, halb: 0.5, viertel: 0.25 }[m[1]];
+if ((m = /^(?:eine\s+|ne\s+)?(\S+)\s+stunden?$/.exec(t))) { var b = bruch(m[1]); return b != null ? b : zahl(m[1]); }
+if ((m = /^(\S+)\s+(?:stunden?|std)(?:\s+und)?\s+(\S+)(?:\s+minuten)?$/.exec(t))) { var h = zahl(m[1]), mi = zahl(m[2]); return h != null && mi != null && mi < 60 ? h + mi / 60 : null; }
+if ((m = /^(\S+)\s+minuten$/.exec(t))) { var x = zahl(m[1]); return x != null ? x / 60 : null; }
+return null;
+}
+var KEIN_CHIP = /^(?:stunden?|minuten?|std|euro|cent|rechnung\w*|angebot\w*|auftr(?:a|ä|ae)g\w*|eins(?:a|ä|ae)tz\w*|arbeit\w*|termin\w*|material\w*|anfahrt\w*|kund\w*|anschrift|adresse|telefon\w*|handy|mail|stundensatz|satz|preis\w*|summe|gesamt|position\w*|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|januar|februar|m(?:ä|ae)rz|april|mai|juni|juli|august|september|oktober|november|dezember|heute|morgen|gestern|woche|tag|uhr|bad|badezimmer|k(?:ü|ue)che|keller|dach|garten|garage|haus|wohnung|heizung|dusche|wanne|fuge|deckel|anlage|leitung|rohr|ventil\w*|sitz|wc|ich|du|er|sie|es|wir|ihr|jo|ja|nee|nein|also|dann|danach|au(?:ß|ss)erdem|bitte|und|oder|aber|beide\w*|alles|nichts|kein\w*|bei|f(?:ü|ue)r|zum|zur|mit|ohne|nach|vor|seine?\w*|ihre?\w*|neue\w*|herrn?|frau|familie|firma|hausverwaltung|mischbatterie|absperrhahn|siphon|dichtung\w*|pumpe|spuelkasten|sp(?:ü|ue)lkasten|thermostat\w*|heizk(?:ö|oe)rper|silikon|kartusche\w*|meter|st(?:ü|ue)ck|leg\w*|trag\w*|schreib\w*|mach\w*|erstell\w*|zeig\w*|guck\w*|gib|nimm|setz\w*)$/i;
+function namenImDiktat(text, heute, ohne, verstehe) {
+var aus = (ohne || []).map(function(x) { return nm(String(x || '')).replace(/^(?:herrn?|frau|familie|firma)\s+/, '').split(' ').pop(); }), out = [], m;
+var add = function(n, rang, i) { var k = nm(n).split(' ').pop(); if (!k || aus.indexOf(k) >= 0 || out.some(function(o) { return nm(o.n).split(' ').pop() === k; })) return; out.push({ n: n, rang: rang, i: i }); };
+var rx = /\b(?:(Herrn?|Frau|Familie|Firma)\s+)?([A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ]{2,}(?:-[A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ]+)?)(?:\s+([A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ]{2,}))?/g;
+while ((m = rx.exec(text))) {
+var anr = m[1], w1 = m[2], w2 = m[3], vor = text.slice(0, m.index).trim().split(/\s+/).pop() || '', nach = text.slice(m.index + m[0].length).trim();
+if (anr) { add((anr === 'Herrn' ? 'Herr' : anr) + ' ' + w1, 0, m.index); continue; }
+var ok = function(w) { return w && !KEIN_CHIP.test(w) && !/(?:ung|heit|keit|ion|t(?:ä|ae)t|schaft|ment|zeit|arbeit(?:en)?|kontrolle|pr(?:ü|ue)fung|lauf|weg|rest|stelle|raum|zimmer|platz|dienst|material|teile?|rohr|anlage|leitung|heizung|stra(?:ß|ss)e|weg|gasse|ring|stieg|pfad|bogen|steg|allee|platz|damm|ufer|grund|hude|hagen|feld|felde|au|dorf|stadt|berg|tal|ried|quell|bach|br(?:ü|ue)ck)$/i.test(w) && !verstehe(w, heute).material.length; };
+if (/^(?:in|aus|nach|von|vom|im|am|zum|zur|den|die|das|dem|der|des|ein|eine|einen|einem|einer)$/i.test(vor) || /^\d/.test(nach)) continue;
+if (w2 && ok(w1) && ok(w2) && !/^\d/.test(nach)) { add(w1 + ' ' + w2, 1, m.index); continue; }
+if (ok(w1) && (/^(?:bei|beim|f(?:ü|ue)r|f(?:ü|ue)rn|an|dann|und|au(?:ß|ss)erdem|sowie|noch)$/i.test(vor) || /^(?:\S+\s+){0,1}(?:\d|eine?[rnm]?\b|zwei|drei|vier|f(?:ü|ue)nf|halbe?|anderthalb|\w*einhalb|\w*viertel|neue?\w*|anlegen|eintragen|erfassen|eine\s+rechnung)/i.test(nach))) add(w1, 2, m.index);
+}
+return out.sort(function(x, y) { return x.rang - y.rang || x.i - y.i; }).slice(0, 3).map(function(o) { return o.n; });
+}
+var ZEITSTELLE = /[\wäöüß'’]+\s+(?:halbe[n]?\s+)?(?:stund(?:en?)?|minuten)\b|[\wäöüß]*(?:viertel|halb)stunde/gi;
+function trennen(text, heute, liste, name, ctx, verstehe, ki) {
+var i = text.indexOf(name.replace(/^(?:Herr|Frau|Familie|Firma)\s+/, '')); if (i < 1) return null; var a = text.lastIndexOf(name.split(' ')[0], i); if (a >= 0 && i - a < 12) i = a;
+var b = /[,;.]?\s*(?:und|sowie|dann|au(?:ß|ss)erdem)?\s*(?:f(?:ü|ue)r|bei|beim|an)?\s*$/.exec(text.slice(0, i)), cut = b ? b.index : i, t1 = text.slice(0, cut).trim(), t2 = text.slice(cut).replace(/^[\s,;.]*(?:und|sowie|dann|außerdem|ausserdem)?\s*/i, '').trim();
+if (t1.length < 4 || t2.length < 4) return null;
+var c = function(x) { var o = {}; for (var k in ctx || {}) o[k] = ctx[k]; for (var j in x) o[j] = x[j]; return o; };
+var e1 = besuch(t1, heute, liste, ctx, verstehe, ki).eins, e2 = besuch(t2, heute, liste, c({ kunde: null, gewaehlt: false }), verstehe, ki).eins;
+e2.forEach(function(b2) { if ((b2.typ === 'erfassen' || b2.typ === 'dokument') && (!b2.kunde || nm(String(b2.kunde)).indexOf(nm(name).split(' ').pop()) < 0)) { b2.kunde = name; b2.kundeStatus = 'neu'; if (b2.unsicher.indexOf('kunde') < 0) b2.unsicher.push('kunde'); } });
+var tz = (text.match(ZEITSTELLE) || []).filter(function(x) { return !/^(?:die|pro|je|der|jede|per|zur|zu)\s/i.test(x); });
+if (tz.length >= 2 || besuch(text, heute, liste, ctx, verstehe, ki).eins.some(function(b) { return (b.unsicher || []).indexOf('zeiten-mehrere') >= 0; })) e1.concat(e2).forEach(function(b) { if ((b.typ === 'erfassen' || b.typ === 'dokument') && b.stunden != null) { b.stunden = null; b.gesamtGenannt = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { if (b.unsicher.indexOf(u) < 0) b.unsicher.push(u); }); b.zeitTeile = tz; } });
+return e1.concat(e2);
+}
+function besuch(text, heute, liste, ctx, verstehe, ki) {
+var c = function(x) { var o = {}; for (var k in ctx || {}) o[k] = ctx[k]; for (var j in x) o[j] = x[j]; return o; };
+var eins = befehl(text, heute, liste, c({ zaehler: 1, modus: 'A', mensch: true }), verstehe, ki), zwei = befehl(text, heute, liste, c({ zaehler: 2, modus: 'A', aufteilen: true, mensch: true }), verstehe, ki);
+var zo = function(r) { return ((r.zahlen || {}).offen || []).some(function(z) { return ZAHLEN_M && ZAHLEN_M.wichtig(z) && /^(?:stunden|minuten|menge_oder_sonstige)$/.test(z.bed); }); };
+var ZS = ZEITSTELLE, sicher = function(r) { return function(b) {
+if (!(b.typ === 'erfassen' || b.typ === 'dokument') || b.gesamtGenannt) return; var tz = (String(b.satz || text).match(ZS) || []).filter(function(x) { return !/^(?:die|pro|je|der|jede|per|zur|zu)\s/i.test(x); });
+var komp = (String(b.satz || text).match(/(?:\d+(?:[.,]\d+)?|[a-zäöüß]+)\s+stund(?:en?)?\s+(?:und\s+)?(?:\d+|[a-zäöüß]+)(?:\s+minuten)?/gi) || []).some(function(x) { var g = gesamtWert(x); return g != null && (g * 60) % 60 >= 10 && Math.abs(g - b.stunden) > 1e-9; });
+if ((tz.length >= 2 || zo(r) || komp) && b.stunden != null) {  b.stunden = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { if (b.unsicher.indexOf(u) < 0) b.unsicher.push(u); }); b.zeitTeile = tz; } }; };
+var anr = /\b(?:Herrn?|Frau|Familie|Firma)\s+[A-ZÀ-ÖØ-ÞĀ-ſ][A-Za-zÀ-ÖØ-öø-ſ-]+/, ausdr = /\b(?:zwei|2)\s+(?:getrennte\s+)?(?:rechnungen|angebote|auftr(?:ä|ae)ge|eins(?:ä|ae)tze)\b|\bgetrennte\s+(?:rechnungen|auftr(?:ä|ae)ge|angebote)\b/i.test(text);
+zwei.forEach(function(b) { if ((b.typ === 'erfassen' || b.typ === 'dokument') && !b.kunde) { var m = anr.exec(String(b.satz || '')); if (m) { b.kunde = m[0].replace(/^Herrn\s/, 'Herr '); b.kundeStatus = b.kundeStatus || 'neu'; } } });
+var name = function(b) {
+var k = String(b.kunde), i = String(b.satz || '').indexOf(k), vor = i > 0 ? String(b.satz).slice(0, i).trim().split(/\s+/).pop() : '';
+return /^[A-ZÀ-ÖØ-ÞĀ-ſ][a-zà-ÿā-ſ]{2,}$/.test(k) && !/^(?:den|die|das|dem|der|des|ein|eine|einen|einem|einer|fürs|fuers|beim|zum|zur|am|im|ins|vom|in|auf|an|unter|über|ueber|hinter|neben|ihre[nm]?|seine[nm]?|unsere[nm]?)$/i.test(vor) && !/(?:ung|heit|keit|ion|zeit|arbeit(?:en)?|kontrolle|lauf|weg|rest|stelle|seite|teil|teile)$/i.test(k); };
+var g = {}; zwei.forEach(function(b) { if ((b.typ === 'erfassen' || b.typ === 'dokument') && b.kunde) { var k = nm(String(b.kunde)); (g[k] = g[k] || []).push(b); } });
+Object.keys(g).forEach(function(k) { if (g[k].length < 2) return; var sz = g[k].map(function(b) { return b.satz; }).join(' '), n1 = befehl(sz, heute, liste, c({ zaehler: 1, modus: 'A', mensch: true, kunde: g[k][0].kunde }), verstehe, ki).filter(function(b) { return b.typ === 'erfassen' || b.typ === 'dokument'; })[0]; if (!n1) return; n1.kunde = g[k][0].kunde; n1.kundeStatus = g[k][0].kundeStatus; zwei = zwei.filter(function(b) { return g[k].indexOf(b) < 0 || b === g[k][0]; }).map(function(b) { return b === g[k][0] ? n1 : b; }); });
+var klarZwei = function(z) { var a = z.filter(function(b) { return (b.typ === 'erfassen' || b.typ === 'dokument') && b.kunde && (/^(?:herrn?|frau|familie|firma)\s/i.test(b.kunde) || name(b) || ['bekannt', 'aehnlich', 'gewaehlt'].indexOf(b.kundeStatus) >= 0); }); return a.length >= 2 && a.length === z.filter(function(b) { return b.typ === 'erfassen' || b.typ === 'dokument'; }).length; };
+if (!ausdr && !klarZwei(zwei) || (ausdr && !klarZwei(zwei))) { var z2 = befehl(text, heute, liste, c({ zaehler: 2, modus: 'A', aufteilen: true, mensch: true, namenTeilen: true }), verstehe, ki); if (klarZwei(z2)) zwei = z2; }
+eins.forEach(sicher(eins)); zwei.forEach(sicher(zwei));
+var ka = zwei.filter(function(b) { return (b.typ === 'erfassen' || b.typ === 'dokument') && b.kunde && (ausdr || /^(?:herrn?|frau|familie|firma)\s/i.test(b.kunde) || name(b) || ['bekannt', 'aehnlich', 'gewaehlt'].indexOf(b.kundeStatus) >= 0); }) .map(function(b) { return nm(String(b.kunde)).replace(/^(?:herrn?|frau|familie|firma)\s+/, ''); });
+var hk = eins.filter(function(b) { return b.typ === 'erfassen' || b.typ === 'dokument'; }).map(function(b) { return b.kunde; }), namen = namenImDiktat(text, heute, hk, verstehe), zw = ka.length >= 2 && ka.length === zwei.filter(function(b) { return b.typ === 'erfassen' || b.typ === 'dokument'; }).length && ka.filter(function(x, i) { return ka.indexOf(x) === i; }).length === ka.length && !(ctx && ctx.gewaehlt);
+if (zw || namen.length) eins.forEach(function(b) {
+if (!(b.typ === 'erfassen' || b.typ === 'dokument') || b.stunden == null) return; var tz = (String(b.satz || text).match(ZS) || []).filter(function(x) { return !/^(?:die|pro|je|der|jede|per|zur|zu)\s/i.test(x); });
+if (zw || tz.length >= 2) { b.stunden = null; b.gesamtGenannt = null; ['stunden', 'zeiten-mehrere'].forEach(function(u) { if (b.unsicher.indexOf(u) < 0) b.unsicher.push(u); }); b.zeitTeile = tz; } });
+return { namen: namen, eins: eins, zwei: zw ? zwei : null };
+return { eins: eins, zwei: ka.length >= 2 && ka.length === zwei.filter(function(b) { return b.typ === 'erfassen' || b.typ === 'dokument'; }).length && ka.filter(function(x, i) { return ka.indexOf(x) === i; }).length === ka.length && !(ctx && ctx.gewaehlt) ? zwei : null };
+}
+var api = { besuch: besuch, trennen: trennen, namenImDiktat: namenImDiktat, gesamtWert: gesamtWert, anfahrtBetragIn: anfahrtBetragIn, befehl: befehl, findeKunde: findeKunde, teile: teile, quellen: quellen, stundensatzIn: stundensatzIn, stundensatzAntwort: stundensatzAntwort, wortzahlen: wortzahlen };
 if (typeof module !== 'undefined') module.exports = api; else root.BEFEHL = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 (function(root) {
@@ -2214,6 +2309,14 @@ zeichnen();
 const fragBeantwortet = (i) => !!S.web && ((i === 0 && !!S.web.gewerk) || (i === 2 && !!S.web.leistungen));
 const naechsteFrage = (i) => { let j = i + 1; while (j < 7 && fragBeantwortet(j)) j += 1; return j; };
 const T = { kunden: KUNDEN.slice(), rech: [], vorschlaege: [], pflichtLog: [], zaehler: 0, ctx: null, adressen: {}, lern: LERNSCHLEIFE.neu(), gewaehlt: null, daten: Object.create(null), archiv: [], zuletzt: [], termine: [], erinnerung: { vortag: true, stunde: true, tages: true }, folge: null, buero: BUERO.neu(Number(heuteISO().slice(0, 4))), auftraege: [] };
+const LOG = { an: false, e: [] };
+const frisch = (x) => x && Number.isFinite(x.z) && x.z <= Date.now() + 3e5 && Date.now() - x.z < 14 * 864e5;
+const logSichern = () => { if (!logSpeicher(JSON.stringify(LOG))) { LOG.an = false; LOG.e = []; logSpeicher(null); } };
+const logLoeschen = () => { LOG.e = []; if (!logSpeicher(null)) { LOG.an = false; try { toast('Protokoll konnte nicht gelöscht werden – Testmodus ist aus.'); } catch (x) {  } } };
+try { const d = JSON.parse(logSpeicher() || 'null'); if (d && typeof d === 'object' && Array.isArray(d.e)) { LOG.an = d.an === true; LOG.e = d.e.filter((x) => frisch(x) && typeof x.c === 'string').slice(-20).map((x) => ({ z: x.z, c: x.c.slice(0, 40), s: String(x.s || '').slice(0, 40), t: LOG.an && typeof x.t === 'string' ? x.t.slice(0, 2000) : undefined })); if (LOG.e.length || LOG.an) logSichern(); else logLoeschen(); } else if (logSpeicher() !== null) logLoeschen(); } catch (x) { logLoeschen(); }
+const logEintrag = (c, st, t) => { LOG.e.push({ z: Date.now(), c, s: st, t: LOG.an && t ? String(t).slice(0, 2000) : undefined }); LOG.e = LOG.e.filter(frisch).slice(-20); logSichern(); };
+const logText = () => LOG.e.filter(frisch).map((x) => `${new Date(x.z).toISOString().slice(0, 16)} ${x.c} @${x.s}${x.t ? ' | ' + x.t : ''}`).join('\n') || 'Keine Einträge.';
+document.addEventListener('visibilitychange', () => { if (!document.hidden && LOG.e.some((x) => !frisch(x))) { LOG.e = LOG.e.filter(frisch); if (LOG.e.length || LOG.an) logSichern(); else logLoeschen(); } });
 const srWeg = () => { if (T.srAus) T.srAus(); }; window.addEventListener('pagehide', srWeg); document.addEventListener('visibilitychange', () => { if (document.hidden) srWeg(); });
 const BEISPIELE = ['Rechnung erstellen für Müller', 'Kunde anlegen: Herr Schmidt, Hauptstraße 5, 12345 Berlin, Telefon 0151 2345678',
 'Ich war 3 Stunden bei Herrn Schmidt, habe 2 Rohre und Dichtband verbaut', 'Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden, ohne Anfahrt, heute',
@@ -2308,7 +2411,7 @@ const VERBOTEN = /^(?:__proto__|constructor|prototype)$/;
 const anlegen = (r) => { if (VERBOTEN.test(String(r.name).trim())) { toast('Ungültiger Name.'); return; } if (!T.kunden.includes(r.name)) T.kunden.push(r.name); Object.assign(daten(r.name), { strasse: r.strasse || '', ort: r.ort || '', tel: r.tel || '', mail: r.mail || '' }); };
 const zusammenfuehren = (ziel, r) => { const d = daten(ziel); ['strasse', 'ort', 'tel', 'mail'].forEach((k) => { if (!d[k] && r[k]) d[k] = r[k]; }); };
 const entfernen = (n) => { T.kunden = T.kunden.filter((x) => x !== n); if (T.gewaehlt === n) T.gewaehlt = null; T.zuletzt = T.zuletzt.filter((x) => x !== n); };
-let vorschau = null, neuMeldung = null;
+let vorschau = null, neuMeldung = null, loeschBereit = null;
 const zeigeVorschau = (recs, quelle) => { const frueher = []; vorschau = { quelle, zeilen: recs.map((r) => { const d = KUNDENSTAMM.dublette(r, alle()) || (KUNDENSTAMM.dublette(r, frueher) ? Object.assign({}, KUNDENSTAMM.dublette(r, frueher), { inDatei: true }) : null); frueher.push(r); return { r, d, wahl: d ? 'skip' : 'neu', an: true }; }) }; zeichneK(); };
 function vorschauKarte() {
 const v = vorschau; if (!v) return null; const sel = v.zeilen.length;
@@ -2339,13 +2442,15 @@ p('Automatische Anlage: Nennen Sie in einer Rechnung einen neuen Namen, frage ic
 function pflegeKarte() {
 const paare = (n) => alle().filter((k) => k.name !== n && KUNDENSTAMM.dublette({ name: n, tel: daten(n).tel, mail: daten(n).mail, strasse: daten(n).strasse, ort: daten(n).ort }, [k]));
 const li = (n) => { const d = daten(n), dub = paare(n)[0], edit = el('div', { className: 'korrektur', hidden: true });
-const f = { name: feld('Name', n), strasse: feld('Straße', d.strasse), ort: feld('PLZ Ort', d.ort), tel: feld('Telefon', d.tel, 'tel'), mail: feld('E-Mail', d.mail, 'email') };
-edit.append(...Object.values(f), knopf('Speichern', 'knopf-zweit', () => { const nn = f.name.value.trim(); if (nn.length < 2) return; if (nn !== n) { T.kunden[T.kunden.indexOf(n)] = nn; T.daten[nn] = T.daten[n]; delete T.daten[n]; if (T.gewaehlt === n) T.gewaehlt = nn; T.zuletzt = T.zuletzt.map((x) => (x === n ? nn : x)); } Object.assign(daten(nn), { strasse: f.strasse.value.trim(), ort: f.ort.value.trim(), tel: f.tel.value.trim(), mail: f.mail.value.trim() }); zeichneK(); }));
-return el('li', {}, el('span', {}, n, el('small', { textContent: zeile(n) }), dub ? el('small', { textContent: `Mögliche Dublette: ${dub.name}` }) : null), el('div', { className: 'antworten' }, knopf('Bearbeiten', 'knopf-still', () => { edit.hidden = !edit.hidden; }), ...(dub ? [knopf(`Mit ${dub.name} zusammenführen`, 'knopf-zweit', () => { zusammenfuehren(dub.name, Object.assign({ name: n }, d)); entfernen(n); delete T.daten[n]; toast('Zusammengeführt.'); zeichneK(); })] : []),
-knopf('Archivieren', 'knopf-still', () => { T.archiv.push({ name: n, d: Object.assign({}, d) }); entfernen(n); zeichneK(); }), knopf('Löschen', 'knopf-still', () => { entfernen(n); delete T.daten[n]; toast('Gelöscht.'); zeichneK(); })), edit); };
+const f = { name: feld('Name', n), strasse: feld('Straße', d.strasse), ort: feld('PLZ Ort', d.ort), tel: feld('Telefon', d.tel, 'tel'), mail: feld('E-Mail', d.mail, 'email'), alias: feld('Spitz-/Kurznamen (mit Komma)', d.alias) };
+edit.append(...Object.values(f), knopf('Speichern', 'knopf-zweit', () => { const nn = f.name.value.trim(); if (nn.length < 2) return; if (nn !== n) { T.kunden[T.kunden.indexOf(n)] = nn; T.daten[nn] = T.daten[n]; delete T.daten[n]; if (T.gewaehlt === n) T.gewaehlt = nn; T.zuletzt = T.zuletzt.map((x) => (x === n ? nn : x)); } Object.assign(daten(nn), { strasse: f.strasse.value.trim(), ort: f.ort.value.trim(), tel: f.tel.value.trim(), mail: f.mail.value.trim(), alias: f.alias.value.trim().slice(0, 120) }); zeichneK(); }));
+const nE = (T.entwuerfe || []).filter((x) => x.kunde === n).length;
+return el('li', {}, el('span', {}, n, el('small', { textContent: zeile(n) }), dub ? el('small', { textContent: `Mögliche Dublette: ${dub.name}` }) : null), el('div', { className: 'antworten' }, knopf('Diktat', 'knopf-haupt', () => { T.gewaehlt = n; zeige('diktat'); const sb = document.getElementById('sprechen-start'); if (sb) sb.click(); }, 'mic'), knopf('Bearbeiten', 'knopf-still', () => { edit.hidden = !edit.hidden; }), ...(dub ? [knopf(`Mit ${dub.name} zusammenführen`, 'knopf-zweit', () => { zusammenfuehren(dub.name, Object.assign({ name: n }, d)); entfernen(n); delete T.daten[n]; toast('Zusammengeführt.'); zeichneK(); })] : []),
+knopf('Archivieren', 'knopf-still', () => { T.archiv.push({ name: n, d: Object.assign({}, d) }); entfernen(n); zeichneK(); }), knopf(loeschBereit === n ? `Wirklich löschen${nE ? ` (mit ${nE} Entwürfen)` : ''}` : 'Löschen', 'knopf-still', () => { if (loeschBereit !== n) { loeschBereit = n; zeichneK(); return; } loeschBereit = null; entfernen(n); delete T.daten[n]; if (nE) T.entwuerfe = T.entwuerfe.filter((x) => x.kunde !== n); toast('Gelöscht.'); zeichneK(); })), edit); };
 return el('section', { className: 'karte' }, el('h2', { textContent: `Ihre Kunden (${T.kunden.length})` }), el('ul', { className: 'posten' }, ...T.kunden.map(li)),
 T.archiv.length ? details(`Archiv (${T.archiv.length})`, el('ul', { className: 'posten' }, ...T.archiv.map((a) => el('li', {}, el('span', {}, a.name), el('div', { className: 'antworten' }, knopf('Zurückholen', 'knopf-zweit', () => { T.archiv = T.archiv.filter((x) => x !== a); T.kunden.push(a.name); T.daten[a.name] = a.d; zeichneK(); }), knopf('Endgültig löschen', 'knopf-still', () => { T.archiv = T.archiv.filter((x) => x !== a); zeichneK(); })))))) : null,
-p('Die Daten bleiben beim Betrieb (auf diesem Gerät). Löschen ist jederzeit möglich.', 'klein'));
+p('Die Daten bleiben beim Betrieb (auf diesem Gerät). Löschen ist jederzeit möglich.', 'klein'), ECHT ? p('Beta: bitte nur erfundene Kunden eintragen, keine echten Kundendaten.', 'hinweis warn') : null,
+T.kunden.length ? (() => { const q = (x) => '"' + String(x || '').replace(/^(?=[\s\u3000]*[=+\-@\uff1d\uff0b\uff0d\uff20]|[\t\r\n])/, "'").replace(/"/g, '""') + '"',   /* keine Formeln in Excel (CSV-Injektion) */ csv = ['Name;Straße;Ort;Telefon;E-Mail'].concat(T.kunden.map((n) => [n, daten(n).strasse, daten(n).ort, daten(n).tel, daten(n).mail].map(q).join(';'))).join('\r\n'); const a = el('a', { className: 'knopf knopf-still', textContent: 'Als CSV exportieren', href: 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + csv) }); a.setAttribute('download', 'kunden.csv'); return a; })() : null);   /* Export nur auf Tippen, Datei bleibt beim Betrieb */
 }
 function zeichneK() { box.replaceChildren(...[vorschauKarte(), neuKarte(), importKarte(), pflegeKarte()].filter(Boolean)); }
 zeichneK();
@@ -2469,39 +2574,56 @@ if (T.gewaehlt) kundenBox.replaceChildren(el('h2', { textContent: `Kunde: ${T.ge
 else { kundenBox.replaceChildren(el('h2', { textContent: 'Kunde wählen (empfohlen)' }), p('Beim Hinfahren den Kunden wählen, dann sprechen. Ohne Auswahl erkenne ich den Namen aus dem Satz und frage bei Unsicherheit.', 'klein'), suche, liste, el('div', { className: 'antworten' }, knopf('Kundenstamm verwalten', 'knopf-still', () => zeige('kunden')), knopf('Termine und Erinnerungen', 'knopf-still', () => zeige('termine')), knopf('Büro: Rechnungen, offene Posten, Sicherung', 'knopf-still', () => zeige('buero')))); fuellen(); }
 };
 kundenZeigen();
-const SR_INFO = { unsicher: true, logprob: 'Apple' }, SR = window.SpeechRecognition || window.webkitSpeechRecognition, sprechBox = el('div', { className: 'sprechen' }); let sr = null;
+const SR_INFO = { unsicher: true, logprob: 'Hersteller' }, SR = window.SpeechRecognition || window.webkitSpeechRecognition, sprechBox = el('div', { className: 'sprechen' }); let sr = null;
 const sprechRuhe = (m) => { sr = null; const b = knopf('Sprechen', 'knopf-haupt', sprechen, 'mic'); b.id = 'sprechen-start'; sprechBox.replaceChildren(b, m ? p(m, 'hinweis warn') : null); };
 function sprechen() {
 if (!SR) { sprechRuhe('Sprechen geht hier nicht. iPhone: in Safari öffnen (nicht Telegram) – oder tippen. Auch Tastatur-Diktat geht an Apple/Google: nur Testdaten.'); feld.focus(); return; }
 if (!T.srJa) { sprechBox.replaceChildren(el('div', { className: 'karte gelb' }, p('Die Spracherkennung macht der Hersteller (iPhone: Apple, Android/Chrome: Google): Ihr Gesprochenes kann dorthin übertragen werden. Nur Testdaten sprechen – echte Kundendaten erst nach Klärung des Datenschutzes.', 'klein'),
 el('div', { className: 'antworten' }, knopf('Verstanden, sprechen', 'knopf-haupt', () => { T.srJa = true; sprechen(); }, 'mic'), knopf('Lieber tippen', 'knopf-still', () => { sprechRuhe(); feld.focus(); })))); return; }
 if (T.srAus) T.srAus();
-const vorher = feld.value, uhr = el('div', { className: 'uhr', textContent: '0:00' }); let fertig = '', text = '', da = false, z, w; const t0 = Date.now(), aus = () => ende(), halt = () => { if (sr) sr.stop(); setTimeout(() => { if (T.srAus === aus) schluss(); }, T.srMs || 3000); };
+const vorher = feld.value, uhr = el('div', { className: 'uhr', textContent: '0:00' }); let fertig = '', text = '', da = false, z, w, z90 = false; const t0 = Date.now(), aus = () => ende(), halt = () => { if (sr) sr.stop(); setTimeout(() => { if (T.srAus === aus) schluss(); }, T.srMs || 3000); };
 const ende = (m) => { clearInterval(z); clearTimeout(w); T.srAus = null; const r = sr; if (r) { r.onend = r.onresult = r.onerror = null; try { r.abort(); } catch (x) {  } } sprechRuhe(m); if (m) { if (!text) feld.value = vorher; feld.focus(); } };
 const schluss = () => { ende(text ? null : 'Nichts verstanden – nochmal.'); if (text) { feld.value = text; T.srText = text; auswerten(text, SR_INFO); } };
 sr = new SR(); sr.lang = 'de-DE'; sr.interimResults = true; sr.continuous = true; sr.onstart = () => { da = true; };
 sr.onresult = (e) => { da = true; let zw = ''; fertig = ''; for (const r of e.results) { if (r.isFinal) fertig += r[0].transcript; else zw += r[0].transcript; } text = (fertig + zw).trim(); feld.value = T.srText = text; };
-sr.onerror = (e) => ende({ 'not-allowed': 'Nicht erlaubt. iPhone: Einstellungen → Safari → Mikrofon; Diktieren einschalten.', 'service-not-allowed': 'Hier nicht erlaubt – in Safari öffnen.', 'no-speech': 'Nichts gehört – nochmal.', 'audio-capture': 'Kein Mikrofon.', network: 'Spracherkennung nicht erreichbar (Internet?).' }[e.error] || 'Abgebrochen (' + e.error + ').');
+sr.onerror = (e) => { logEintrag('sr:' + (/^(?:aborted|audio-capture|bad-grammar|language-not-supported|network|no-speech|not-allowed|service-not-allowed)$/.test(e.error) ? e.error : 'sonst'), 'sprechen'); ende({ 'not-allowed': 'Nicht erlaubt. iPhone: Einstellungen → Safari → Mikrofon; Diktieren einschalten.', 'service-not-allowed': 'Hier nicht erlaubt – in Safari öffnen.', 'no-speech': 'Nichts gehört – nochmal.', 'audio-capture': 'Kein Mikrofon.', network: 'Spracherkennung nicht erreichbar (Internet?).' }[e.error] || 'Abgebrochen (' + e.error + ').'); };
 sr.onend = schluss; T.srAus = aus;
-z = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); uhr.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; if (!sprechBox.isConnected) ende(); else if (s >= 95) schluss(); else if (s >= 90 && sr) sr.stop(); }, 1000);
+z = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); uhr.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; if (!sprechBox.isConnected) ende(); else if (s >= 95) schluss(); else if (s >= 90 && sr && !z90) { z90 = true; halt(); } }, 1000);
 w = setTimeout(() => { if (!da) ende('Keine Reaktion – in Safari öffnen oder tippen.'); }, 8000);
 try { sr.start(); } catch (x) { ende('Start nicht möglich – bitte tippen.'); return; }
 sprechBox.replaceChildren(el('span', { className: 'status st-ja' }, icon('mic'), 'Ich höre zu'), uhr, p('Sprechen Sie jetzt, dann „Fertig“.', 'gross'), el('div', { className: 'antworten' }, knopf('Fertig', 'knopf-stopp', halt, 'stopp'), knopf('Abbrechen', 'knopf-still', () => { ende(); feld.value = vorher; })));
 }
 sprechRuhe();
+function logKarte() {
+const box = el('div', {}), cb = el('input', { type: 'checkbox' }); cb.checked = LOG.an; cb.setAttribute('aria-label', 'Testmodus: Diktate fürs Melden merken');
+const zeig = () => box.replaceChildren(LOG.an ? p('Diktate werden gemerkt – nur Testdaten.', 'hinweis warn') : null, p(`${LOG.e.length} Einträge (höchstens 20, 14 Tage).`, 'klein'),
+el('div', { className: 'antworten' }, knopf('Problem melden', 'knopf-zweit', () => { const v = el('textarea', { className: 'feld', rows: 6, readOnly: true }); v.value = logText(); v.setAttribute('aria-label', 'Vorschau Fehlerprotokoll');
+box.append(v, p('Die Kopie kann per Universal Clipboard auf andere Apple-Geräte gelangen; Löschen hier entfernt sie nicht.', 'klein'), knopf('Kopieren', 'knopf-haupt', () => { (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(v.value) : Promise.reject(new Error('x'))).then(() => toast('Kopiert – jetzt z. B. per Nachricht schicken.'), () => toast('Kopieren ging nicht – bitte Text markieren und kopieren.')); })); }),
+knopf('Protokoll löschen', 'knopf-still', () => { logLoeschen(); zeig(); })));
+const titel = () => (LOG.an ? 'Fehlerprotokoll – Testmodus AN: Diktate werden gemerkt (nur Testdaten)' : 'Fehlerprotokoll (nur auf diesem Gerät)');
+cb.addEventListener('change', () => { LOG.an = cb.checked; if (!LOG.an) logLoeschen(); else logSichern(); zeig(); kt.firstChild.textContent = titel(); });
+zeig(); const kt = details(titel(), el('label', { className: 'assi-haken' }, cb, ' Testmodus: Diktate fürs Melden merken (nur Testdaten)'), box); return kt;
+}
 if (schlank) { feld.rows = 5; feld.classList.add('diktat-feld'); feld.placeholder = 'z. B. Bei Frau Beispiel zwei Stunden, ein Siphon, Anfahrt 30 Euro, Rechnung.'; feld.setAttribute('aria-label', 'Ihr Diktat');
-app.append(el('section', { className: 'karte' }, el('h2', { textContent: 'Was haben Sie gemacht?' }), p('Sprechen oder tippen: Kunde, Arbeitszeit, Material, Anfahrt, Rechnung oder nur erfassen.', 'klein'), el('p', {}, el('strong', { textContent: 'Jeden Auftrag einzeln diktieren – ein Kunde, ein Auftrag pro Diktat.' })), mic ? micBereich : sprechBox, feld, knopf('Prüfen', 'knopf-haupt', () => { if (T.srAus) T.srAus(); const t = feld.value.trim(); if (t) auswerten(t, t === T.srText ? SR_INFO : null); else feld.focus(); }, 'ok'), p('Die App macht nur Entwürfe. Vergleichen Sie jeden Entwurf mit Ihrem Diktat, bevor Sie ihn verwenden.', 'klein')), aus); }
+app.append(el('section', { className: 'karte' }, el('h2', { textContent: 'Was haben Sie gemacht?' }), T.gewaehlt ? el('div', { className: 'antworten' }, p(`Diktat für ${T.gewaehlt} – den Namen müssen Sie nicht sagen.`, 'klein'), knopf('Anderer Kunde', 'knopf-still', () => { T.gewaehlt = null; zeige('diktat'); })) : null, p('Sprechen oder tippen: Kunde, Arbeitszeit, Material, Anfahrt, Rechnung oder nur erfassen.', 'klein'), el('p', {}, el('strong', { textContent: 'Jeden Auftrag einzeln diktieren – ein Kunde, ein Auftrag pro Diktat.' })), mic ? micBereich : sprechBox, p('Sprache, auch Tastatur-Diktat, geht an Apple/Google – nur Testdaten.', 'klein'), feld, knopf('Prüfen', 'knopf-haupt', () => { if (T.srAus) T.srAus(); const t = feld.value.trim(); if (t) auswerten(t, t === T.srText ? SR_INFO : null); else feld.focus(); }, 'ok'), p('Die App macht nur Entwürfe. Vergleichen Sie jeden Entwurf mit Ihrem Diktat, bevor Sie ihn verwenden.', 'klein')), aus, logKarte()); }
 else app.append(el('div', { className: 'hinweis' }, icon('schloss'), p('Alles hier ist Test: erfundene Kunden und Preise, nichts wird gespeichert oder verschickt. Die KI ändert nie Preise oder Artikel.')), kundenBox, micBereich, eingabe, ...[kiSchalter()].filter(Boolean), aus);
 function auswerten(text, info) {
-V.text = text; V.lese = text; V.temp = {}; V.wahl = {}; V.modell = null; V.kiStatus = null; V.info = info; V.best = {}; V.eing = {}; V.bew = {}; V.ki = {}; V.id = ++T.zaehler; V.fertig = {}; V.absicht = {}; V.einAuftrag = text === V.neinText ? false : null;  V.assiAn = true; V.assi = { gesehen: new Set(), hoerOk: false, aendern: null }; V.lauf += 1; rechne(); zeichne(); kiNach(V.lauf);
+V.text = text; V.lese = text; V.temp = {}; V.wahl = {}; V.modell = null; V.kiStatus = null; V.info = info; V.best = {}; V.eing = {}; V.bew = {}; V.ki = {}; V.id = ++T.zaehler; V.fertig = {}; V.absicht = {}; V.aufteilen = undefined; V.trennen = null; V.assiAn = true; V.assi = { gesehen: new Set(), hoerOk: false, aendern: null }; V.lauf += 1; rechne(); logDiktat(); zeichne(); kiNach(V.lauf);
+}
+function logDiktat() {
+const auf = V.befehle.filter((b) => b.typ === 'erfassen' || b.typ === 'dokument'), u = V.befehle.find((b) => b.typ === 'unklar');
+const c = !auf.length && u ? 'unklar:' + ((u.unsicher || [])[0] || 'befehl') : auf.some((b) => b.unsicher.includes('auftragszahl-warn')) ? 'veto-hinweis' : V.zwei ? 'zwei-kunden' : null;
+if (c || LOG.an) logEintrag(c || 'diktat', 'diktat', V.text);
 }
 function rechne() {
 const akt = LERNSCHLEIFE.aktiv(T.lern); akt.woerterbuch = Object.assign({}, akt.woerterbuch, V.temp || {}); V.lese = LERNSCHLEIFE.anwenden(akt, V.text);
 Object.keys(V.absicht || {}).forEach((sz) => { V.lese = V.lese.replace(sz, { rechnung: 'Rechnung erstellen: ', termin: 'Termin eintragen: ', kunde: 'Kunde anlegen: ' }[V.absicht[sz]] + sz); });
-if (V.einAuftrag === true && V.einText !== V.text) V.einAuftrag = null;
-V.befehle = BEFEHL.befehl(V.lese, heuteISO(), T.kunden, { kunde: T.ctx }, verstehe, V.ki);
-V.zahlFrage = V.befehle.some((b) => b.typ === 'erfassen' || b.typ === 'dokument' || (b.typ === 'unklar' && (b.unsicher || []).includes('mehrere-kunden')));
-if (V.einAuftrag === true) V.befehle = BEFEHL.befehl(V.lese, heuteISO(), T.kunden, { kunde: T.ctx, zaehler: 1, modus: 'A' }, verstehe, V.ki);
+{ const al = {}; T.kunden.forEach((k) => String((T.daten[k] || {}).alias || '').split(',').map((a) => a.trim().toLowerCase()).filter((a) => a.length >= 2).forEach((a) => { al[a] = al[a] === undefined || al[a] === k ? k : null; }));
+const ks = Object.keys(al).filter((a) => al[a]).sort((a, b) => b.length - a.length); if (ks.length) V.lese = V.lese.replace(new RegExp('(^|[^\\p{L}])(' + ks.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')(?![\\p{L}])', 'giu'), (m, v, a) => v + al[a.toLowerCase()]); }
+const bs = BEFEHL.besuch(V.lese, heuteISO(), T.kunden, { kunde: T.ctx, gewaehlt: !!T.gewaehlt }, verstehe, V.ki);
+V.zwei = bs.zwei ? bs.zwei.filter((b) => b.typ === 'erfassen' || b.typ === 'dokument').map((b) => b.kunde) : null;
+V.befehle = bs.zwei && V.aufteilen === true ? bs.zwei : bs.eins; V.namen = V.trennen ? [] : bs.namen;
+if (V.trennen) { const tr = BEFEHL.trennen(V.lese, heuteISO(), T.kunden, V.trennen, { kunde: T.ctx, gewaehlt: !!T.gewaehlt }, verstehe, V.ki); if (tr) V.befehle = tr; }
 if (V.modell) { ABGLEICH.verbinde(V.befehle, V.modell);
 V.befehle.forEach((b) => { Object.keys(b.alternativen || {}).forEach((f) => { const w = V.wahl[b.satz + '|ab-' + f]; if (!w) return; const alt = b.alternativen[f];
 if (w === 'ki') { if (f === 'material') { b.material = alt.kiWert.material || []; b.unbekannt = alt.kiWert.unbekannt || []; } else if (f === 'kunde') { const k = T.kunden.find((x) => x.split(' ').pop().toLowerCase() === String(alt.kiWert).toLowerCase()); if (k) { b.kunde = k; b.kundeStatus = 'gewaehlt'; } } else if (f === 'kein_material') b.keinMaterial = !!alt.kiWert; else b[f] = alt.kiWert; }
@@ -2644,9 +2766,9 @@ const satzOffen = (b) => b.typ === 'erfassen' && b.stunden > 0 && !V.best[b.satz
 const anfBestOffen = (b) => b.typ === 'erfassen' && !!b.anfahrtBetrag && !b.unsicher.includes('anfahrtbetrag') && !V.best[b.satz + '|anfbetrag'];
 const anfBest = (b) => { V.eing[b.satz + '|anfahrtbetrag'] = b.anfahrtBetrag; V.best[b.satz + '|anfbetrag'] = true; };
 function stdFrage(b) {
-const v = b.stundenEingabe || !b.unsicher.includes('zeiten-mehrere') ? b.stunden : null, st = zeitStellen(V.lese);
-return { titel: 'Wie viele Stunden insgesamt?', wert: v != null ? (b.stundenEingabe ? `Eingetragen: ${zahlDe(v)} Std.` : `Vorschlag aus dem Diktat: ${zahlDe(v)} Std. – bitte prüfen`) : 'Bitte eintragen',
-hinweis: (st.length ? 'Im Diktat: ' + st.map((x) => `„${x}“`).join(' · ') + '.' : 'Im Diktat keine Zeitangabe gefunden.') + (v == null ? ' Ich rechne Zeitangaben nicht zusammen.' : ''),
+const v = b.stundenEingabe || b.gesamtGenannt || !b.unsicher.includes('zeiten-mehrere') ? b.stunden : null, st = zeitStellen(b.satz || V.lese), warn = (b.rueckfragen || []).find((x) => x.startsWith('Hinweis:'));
+return { titel: 'Wie viele Stunden insgesamt?', wert: v != null ? (b.stundenEingabe ? `Eingetragen: ${zahlDe(v)} Std.` : b.gesamtGenannt ? `Gesamtzeit aus dem Diktat („${b.gesamtGenannt}“): ${zahlDe(v)} Std. – bitte prüfen` : `Vorschlag aus dem Diktat: ${zahlDe(v)} Std. – bitte prüfen`) : 'Bitte eintragen',
+hinweis: (warn ? warn + ' ' : '') + (st.length ? 'Im Diktat: ' + st.map((x) => `„${x}“`).join(' · ') + '.' : 'Im Diktat keine Zeitangabe gefunden.') + (v == null ? ' Ich rechne Zeitangaben nicht zusammen.' : ''),
 eingabe: { label: 'Stunden insgesamt (0 = keine Arbeitszeit)', min: 0, max: 24, step: 0.25, start: v, knopf: 'Stunden bestätigen', setze: (n) => { V.eing[b.satz + '|stunden'] = n; V.best[b.satz + '|std'] = true; if (!n) V.best[b.satz + '|satz'] = true; } } };
 }
 function satzFrage(b) {
@@ -2659,7 +2781,7 @@ function pflichtFeld(x, neu) {
 const E = x.eingabe, f = el('input', { className: 'feld', type: 'number', inputMode: 'decimal', min: String(E.min), max: String(E.max), step: String(E.step), placeholder: E.label }); f.setAttribute('aria-label', E.label); if (E.start != null) f.value = String(E.start);
 return el('div', { className: 'karte gelb' }, el('p', {}, el('strong', { textContent: x.titel })), p(x.wert, 'klein'), p(x.hinweis, 'klein'), f, knopf(E.knopf, 'knopf-zweit', () => { const n = pflichtWert(f, E); if (n == null) { toast(`Bitte eine Zahl von ${zahlDe(E.min)} bis ${zahlDe(E.max)} eintragen.`); return; } E.setze(n); neu(); }));
 }
-const ohneNein = (fn) => (...a) => (V.einAuftrag === false ? toast('Gesperrt: bitte jeden Auftrag einzeln neu diktieren.') : fn(...a));
+const ohneNein = (fn) => fn;
 function rueckfragen(bz) {
 const { b } = bz; const box = el('div', { className: 'rueckfragen' }); const neu = () => { rechne(); zeichne(); };
 b.rueckfragen.forEach((t) => box.append(el('p', { className: 'hinweis warn', textContent: t })));
@@ -2691,7 +2813,7 @@ if (antw.childNodes.length) box.append(antw); return box.childNodes.length ? box
 const anfOffen = (bz) => { const b = bz.b; return (b.typ === 'erfassen' || b.typ === 'dokument') && !b.anfahrtBetrag && !b.unsicher.includes('anfahrtbetrag') && V.eing[b.satz + '|anfahrt'] === undefined; };
 const gesperrt = (bz) => (bz.b.stunden == null && bz.b.unsicher.includes('zeiten-mehrere')) || stdOffen(bz.b) || satzOffen(bz.b) || anfBestOffen(bz.b) || anfOffen(bz) || (bz.b.typ === 'kunde' && bz.b.name && !V.best[bz.b.satz + '|kundedaten']) || (bz.b.unsicher.includes('negativ') && !V.best[bz.b.satz + '|negativ']) || ((bz.b.typ === 'erfassen' || bz.b.typ === 'dokument') && !V.best[bz.b.satz + '|komplex']) || bz.zeilen.some((r) => r.status === 'rot' || (r.status === 'gelb' && !r.id.startsWith('unb-'))) || (bz.b.unsicher.includes('zahl-offen') && !V.best[bz.b.satz + '|zahlen']);
 function uebernehmen(b) {
-if (gesperrt({ b, zeilen: mitBewertung(testZeilen(b, V), b, V) }) || ((b.typ === 'erfassen' || b.typ === 'dokument') && V.einAuftrag !== true)) { toast('Erst alle Pflichtangaben bestätigen – ich speichere nichts Unbestätigtes.'); return; }
+if (gesperrt({ b, zeilen: mitBewertung(testZeilen(b, V), b, V) }) || zweiOffen()) { toast('Erst alle Pflichtangaben bestätigen – ich speichere nichts Unbestätigtes.'); return; }
 V.fertig = V.fertig || {}; V.fertig[b.satz] = true; if (ECHT) setTimeout(tbSpeichern, 0);
 if (ECHT && b.typ !== 'kunde' && b.typ !== 'termin') { if (b.kunde) { T.ctx = b.kunde; T.zuletzt = [b.kunde].concat(T.zuletzt.filter((x) => x !== b.kunde)); tbMerken(b, V.text); } return; }
 if (b.typ === 'termin') { T.termine.push({ kunde: b.kunde, datum: b.datum, uhrzeit: b.uhrzeit, dauer: b.dauer, notiz: b.notiz, rechnung: false }); if (b.kunde) T.zuletzt = [b.kunde].concat(T.zuletzt.filter((x) => x !== b.kunde)); return; }
@@ -2712,26 +2834,26 @@ out.push(w);
 }
 return out;
 }
-const einLog = (antwort) => { (T.pflichtLog = T.pflichtLog || []).push({ zeit: new Date().toISOString(), text: String(V.text || '').slice(0, 300), antwort }); };
-const einAntwort = (eins, t) => { einLog(t); V.einAuftrag = eins; V.einText = eins ? V.text : null; V.neinText = eins ? null : V.text; };
-const ANZAHL = 'Wie viele Aufträge sind in Ihrem Diktat?', ANZ_HINW = 'Mehrere Tätigkeiten können zu einem Auftrag gehören. Mehrere Aufträge bitte einzeln diktieren.';
-const anzWarn = () => { const u = V.befehle.find((b) => b.typ === 'unklar' && (b.unsicher || []).includes('mehrere-kunden')), fr = fremdeNamen(); return [u && u.rueckfragen && u.rueckfragen[0] ? '⚠ ' + u.rueckfragen[0].split('. ')[0] + '.' : '', fr.length ? '⚠ Auch genannt: ' + fr.join(', ') + ' – eigener Auftrag?' : ''].filter(Boolean).join(' '); };
-function einFrage(kurz) {
-const neu = () => { rechne(); zeichne(); };
-if (V.einAuftrag === true) return p('✓ 1 Auftrag bestätigt.', 'klein');
-if (V.einAuftrag === false) return el('div', {}, el('p', { role: 'alert' }, el('strong', { textContent: 'Aus diesem Diktat übernehme ich nichts. Bitte jeden Auftrag einzeln neu diktieren.' })),
-el('div', { className: 'antworten' }, knopf('Neu diktieren', 'knopf-haupt', () => { feld.value = ''; V.assiAn = false; zeichne(); feld.focus(); }), knopf('Doch nur einer', 'knopf-still', () => { einAntwort(true, 'Doch nur einer'); neu(); })));
-const jn = el('div', { className: 'antworten', role: 'group', 'aria-label': ANZAHL }, knopf('1 Auftrag', 'knopf-zweit', () => { einAntwort(true, '1 Auftrag'); neu(); }), knopf('2 oder mehr Aufträge', 'knopf-zweit', () => { einAntwort(false, '2 oder mehr'); zeichne(); }));
-const w = anzWarn();
-return el('div', kurz ? {} : { className: 'karte gelb' }, kurz ? null : el('p', {}, el('strong', { textContent: ANZAHL })), p(ANZ_HINW, 'klein'), w ? p(w, 'klein') : null, jn);
+const einLog = (antwort) => { (T.pflichtLog = T.pflichtLog || []).push({ zeit: new Date().toISOString(), antwort }); };
+const zweiOffen = () => !!V.zwei && V.aufteilen === undefined;
+const zweiAntwort = (ja) => { einLog(ja ? 'Aufteilen' : 'Ein Auftrag'); V.aufteilen = ja; };
+const ZWEI = () => 'Zwei Kunden erkannt: ' + V.zwei.join(' und '), ZWEI_HINW = 'Jeder bekommt einen eigenen Entwurf? War es ein Besuch, tippen Sie „Ein Auftrag“.';
+function chipZeile() {
+if (V.trennen) return el('div', { className: 'antworten' }, p(`Abgetrennt ab „${V.trennen}“ – bitte beide Entwürfe prüfen.`, 'klein'), knopf('Zusammen lassen', 'knopf-still', () => { V.trennen = null; rechne(); zeichne(); }));
+if (!(V.namen || []).length || zweiOffen()) return null;
+return el('div', { className: 'antworten chips' }, p('Weitere Namen im Diktat – eigener Entwurf?', 'klein'), ...V.namen.map((n) => knopf(n, 'knopf-still', () => { einLog('Chip'); V.trennen = n; rechne(); zeichne(); })));
+}
+function zweiFrage() {
+if (!zweiOffen()) return V.zwei ? p(V.aufteilen ? '✓ Aufgeteilt: ' + V.zwei.join(', ') : '✓ Ein Auftrag', 'klein') : null;
+return el('div', { className: 'karte gelb' }, el('p', {}, el('strong', { textContent: ZWEI() })), p(ZWEI_HINW, 'klein'), el('div', { className: 'antworten' }, knopf('Aufteilen (' + V.zwei.length + ' Entwürfe)', 'knopf-zweit', () => { zweiAntwort(true); rechne(); zeichne(); }), knopf('Ein Auftrag', 'knopf-zweit', () => { zweiAntwort(false); rechne(); zeichne(); })));
 }
 function ausfuehren(bz) {
 const { b } = bz; if (b.typ === 'offen' || b.typ === 'unklar') return null; const sperre = gesperrt(bz);
 const text = (b.typ === 'termin' ? 'Termin eintragen' : b.typ === 'kunde' ? 'Kunde anlegen' : b.typ === 'dokument' ? 'Leeren Entwurf vormerken' : ECHT ? 'Entwurf speichern' : 'Entwurf übernehmen') + (ECHT ? '' : ' (Beispiel)');
 const fertig = V.fertig && V.fertig[b.satz]; if (fertig) return el('span', { className: 'status st-ok' }, icon('ok'), ECHT ? 'Gespeichert – nur auf diesem Gerät. Unter „Heute“ teilen.' : 'Vorgemerkt (Beispiel) – nichts gespeichert oder verschickt');
 const k = knopf(text, 'knopf-haupt', () => { uebernehmen(b); zeichne(); }, 'ok'), auf = b.typ === 'erfassen' || b.typ === 'dokument';
-if (sperre || (auf && V.einAuftrag !== true) || V.einAuftrag === false) { k.disabled = true; k.setAttribute('aria-disabled', 'true'); }
-return el('div', {}, auf ? einFrage() : null, k, sperre ? p('Erst die gelben/roten Angaben klären – ich übernehme nichts Unsicheres.', 'klein') : null);
+if (sperre || zweiOffen()) { k.disabled = true; k.setAttribute('aria-disabled', 'true'); }
+return el('div', {}, k, sperre ? p('Erst die gelben/roten Angaben klären – ich übernehme nichts Unsicheres.', 'klein') : null);
 }
 const HOER = 'Spracherkennung war unsicher';
 const FELDNAME = { kunde: 'Kunde', stunden: 'Arbeitszeit', stundensatz: 'Stundensatz', anfahrt: 'Anfahrt', anfahrtBetrag: 'Anfahrtsbetrag', material: 'Material', art: 'Art', termin: 'Termin', kein_material: 'Material' };
@@ -2757,10 +2879,7 @@ return [t, () => { f(); V.bew[bk(id)] = 'ja'; }];
 }
 function fragen(bzs) {
 const q = []; const mehr = bzs.filter((x) => x.b.typ !== 'offen' && x.b.typ !== 'unklar').length > 1;
-if (V.zahlFrage && V.einAuftrag == null) { q.push({ id: 'anzahl', titel: ANZAHL, wert: `„${V.text}“`, hinweis: [ANZ_HINW, anzWarn()].filter(Boolean).join(' '), wahl: [['1 Auftrag', () => einAntwort(true, '1 Auftrag')], ['2 oder mehr Aufträge', () => einAntwort(false, '2 oder mehr')]] }); return q; }
-if (V.info && V.info.unsicher && !V.assi.hoerOk) q.push({ id: 'hoeren', titel: 'Stimmt der gehörte Text?', wert: `„${V.text}“`, hinweis: 'Die Spracherkennung war nicht sicher. Stimmt der Text, gelten die daraus gelesenen Angaben.', text: true,
-ja: ['Ja, Text stimmt', () => { V.assi.hoerOk = true; bzs.forEach((bz) => bz.zeilen.forEach((r) => { if ((r.hinweis || '').endsWith(HOER)) V.bew[bz.b.satz + '|' + r.id] = 'ja'; })); }] });
-if (V.einAuftrag === false) return q;
+if (zweiOffen()) { q.push({ id: 'zwei', titel: ZWEI(), wert: `„${V.text}“`, hinweis: ZWEI_HINW, wahl: [['Aufteilen (' + V.zwei.length + ' Entwürfe)', () => zweiAntwort(true)], ['Ein Auftrag', () => zweiAntwort(false)]] }); return q; }
 bzs.forEach((bz) => {
 const { b, zeilen, nr } = bz;
 if (b.typ === 'unklar' && (b.unsicher || []).includes('befehl') && !V.best[b.satz + '|ignor']) { const se = (a) => () => { V.absicht[b.satz] = a; }; q.push({ id: nr + ':absicht', titel: 'Was möchten Sie tun?', wert: `„${b.satz.slice(0, 80)}“`, hinweis: 'Ich habe nicht sicher verstanden, was gemeint ist. Nie raten – bitte wählen.', bz, wahl: [['Rechnung erstellen', se('rechnung')], ['Termin eintragen', se('termin')], ['Kunde anlegen', se('kunde')], ['Nichts davon', () => { V.best[b.satz + '|ignor'] = true; }]] }); return; }
@@ -2829,7 +2948,7 @@ mitte.append(el('h2', { className: 'assi-titel', textContent: 'Die KI liest mit 
 fuss.append(knopf('Ohne KI weiter', 'knopf-zweit', () => { V.lauf += 1; V.kiStatus = 'übersprungen'; V.modell = null; neu(); }));
 } else if (offen.length) {
 const x = offen[0], edit = A.aendern === x.id || (!x.ja && !x.wahl) || !!(x.eingabe && x.eingabe.text);
-mitte.append(el('h2', { className: 'assi-titel', textContent: x.titel }), el('p', { className: 'assi-wert', textContent: x.wert }), x.hinweis ? p(x.hinweis, 'klein') : null);
+mitte.append(el('h2', { className: 'assi-titel', textContent: x.titel }), el('p', { className: 'assi-wert', textContent: x.wert }), x.hinweis ? p(x.hinweis, 'klein') : null, x.id === 'zwei' ? null : chipZeile());
 let haken = null;
 if (x.checkliste) { haken = x.checkliste.map((t) => { const c = el('input', { type: 'checkbox' }); c.setAttribute('aria-label', t); return [c, el('label', { className: 'assi-haken' }, c, ' ' + t)]; }); mitte.append(el('div', { className: 'assi-karte' }, ...haken.map((h2) => h2[1]))); }
 if (edit) {
@@ -2843,8 +2962,6 @@ if (x.ja && !(x.eingabe && x.eingabe.text)) { const jk = knopf(x.ja[0], 'knopf-h
 if (haken) { const pruef = () => { const alle = haken.every((h2) => h2[0].checked); jk.disabled = !alle; jk.setAttribute('aria-disabled', String(!alle)); }; haken.forEach((h2) => h2[0].addEventListener('change', pruef)); pruef(); } }
 (x.wahl || []).forEach(([t, fn]) => fuss.append(knopf(t, 'knopf-haupt', () => { fn(); A.aendern = null; neu(); })));
 if ((x.ja || x.wahl) && !edit) fuss.append(knopf('Ändern', 'knopf-zweit', () => { A.aendern = x.id; zeichne(); }));
-} else if (V.einAuftrag === false) {
-mitte.append(el('h2', { className: 'assi-titel', textContent: 'Mehrere Aufträge' })); fuss.append(einFrage(true), knopf('Text ändern', 'knopf-still', () => { V.assiAn = false; zeichne(); feld.focus(); }));
 } else {
 const alle = liste.length && liste.every((bz) => V.fertig && V.fertig[bz.b.satz]); const unklar = bzs.filter((x) => x.b.typ === 'unklar');
 if (alle) {
@@ -2861,8 +2978,8 @@ if (bz0 && bz0.zahlen.length) mitte.append(details(bz0.ersetzt || bz0.offen.leng
 mitte.append(p('Beträge gelten erst nach Ihrer Freigabe.', 'klein'));
 const frei = knopf(nurTermin ? 'Freigeben und Termin eintragen' : nurAngebot ? 'Freigeben und Angebot erstellen' : hat ? (ECHT ? 'Freigeben und Entwurf speichern' : 'Freigeben und Rechnung erstellen') : 'Freigeben und übernehmen', 'knopf-haupt', () => { liste.forEach((bz) => { if (!gesperrt(bz) && !(V.fertig && V.fertig[bz.b.satz])) uebernehmen(bz.b); }); zeichne(); }, 'ok');
 const aufL = liste.some((x) => x.b.typ === 'erfassen' || x.b.typ === 'dokument');
-if (!liste.length || liste.some(gesperrt) || V.einAuftrag === false) { frei.disabled = true; frei.setAttribute('aria-disabled', 'true'); }
-if (aufL && V.einAuftrag !== true) { fuss.append(einFrage(true)); const h = mitte.querySelector('.assi-titel'); if (h && V.einAuftrag !== false) { const fr = fremdeNamen(); h.textContent = (V.befehle.some((b) => (b.unsicher || []).includes('zeiten-mehrere')) ? '1 Auftrag oder 2 Aufträge?' : 'War das nur ein Auftrag?') + (fr.length ? ' ⚠ Auch genannt: ' + fr.slice(0, 2).join(', ') + (fr.length > 2 ? ' +' + (fr.length - 2) : '') : ' Bitte prüfen:'); } } else if (liste.length) fuss.append(frei);  fuss.append(knopf('Text ändern', 'knopf-still', () => { V.assiAn = false; zeichne(); feld.focus(); }));
+if (!liste.length || liste.some(gesperrt)) { frei.disabled = true; frei.setAttribute('aria-disabled', 'true'); }
+if (liste.length) fuss.append(frei);  fuss.append(knopf('Text ändern', 'knopf-still', () => { V.assiAn = false; zeichne(); feld.focus(); }));
 }
 }
 const neuEl = el('div', { className: 'assi', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Auftrag prüfen' }, el('header', { className: 'assi-kopf' }, punkte, zaehler, zu), ...(kundeKopf ? [kundeKopf] : []), mitte, fuss);
@@ -2877,7 +2994,7 @@ const korr = el('textarea', { className: 'feld', rows: 2, id: 'gehoert' }); korr
 if (V.kiStatus) teile.push(p(V.kiStatus === 'läuft' ? 'Die KI liest den Text mit (zweiter Leser) …' : V.kiStatus === 'fertig' ? 'Gelesen von Regeln UND KI: Uneinigkeit ist gelb markiert.' : 'KI ' + V.kiStatus + ' – es gelten nur die Regeln (nichts wird als sicher markiert, was nur eine Seite liest).', 'klein'));
 teile.push(el('section', { className: 'karte' }, el('h2', { textContent: 'Das habe ich gehört' }), V.lese !== V.text ? p('Wörterbuch angewendet: Ihre Wörter wurden für das Lesen ersetzt (Original bleibt hier stehen).', 'klein') : null, p(`${gHoer}${V.info && typeof V.info.logprob === 'number' ? ` (Güte ${V.info.logprob})` : ''}. Falsch gehört? Hier korrigieren und neu auswerten.`, 'klein'), korr,
 el('div', { className: 'antworten' }, knopf('Neu auswerten', 'knopf-zweit', () => { const t = korr.value.trim(); if (t) { feld.value = t; auswerten(t, null); } }), ...(V.assiAn ? [] : [knopf('Schritt für Schritt prüfen', 'knopf-haupt', () => { V.assiAn = true; zeichne(); })]))));
-if (V.zahlFrage && V.einAuftrag !== true) { teile.push(einFrage()); aus.replaceChildren(...teile); assistent(bzs); return; }
+if (zweiOffen()) { teile.push(zweiFrage()); aus.replaceChildren(...teile); assistent(bzs); return; }
 const abw = [];
 bzs.forEach((bz) => { const k = befehlKarten(bz);
 bz.zeilen.forEach((r) => { if (r.gezaehlt && r.status !== 'ok') abw.push([bz.nr + 1, r]); });
@@ -2886,6 +3003,7 @@ const links = el('div', { className: 'vn-links' }, el('h3', { textContent: schla
 const rechts = el('div', { className: 'vn-rechts' }, el('h3', { textContent: 'Daraus gemacht' }), rechnungKarte(bz.b, bz.zeilen));
 teile.push(el('section', { className: 'karte test-befehl' }, k.kopf, schlank ? null : quoteEl, el('div', { className: 'vn' }, links, rechts), rueckfragen(bz), ausfuehren(bz))); });
 const liste = abw.length ? el('section', { className: 'karte' }, el('h2', { textContent: 'Abweichungen' }), el('ul', { className: 'posten' }, ...abw.map(([n, r]) => el('li', {}, el('span', {}, `${n}. ${r.name}`, el('small', { textContent: `Gesagt: ${r.quelle ? '„' + V.lese.slice(r.quelle[0], r.quelle[1]) + '“' : '—'} · Auf der Rechnung: ${r.rechnung}${r.hinweis ? ' · ' + r.hinweis : ''}` })), el('b', { textContent: stat[r.status][1] }))))) : null;
+const cz = chipZeile(); if (cz) teile.push(el('section', { className: 'karte' }, cz));
 if (schlank) aus.replaceChildren(...teile); else aus.replaceChildren(...teile, ...[zahlenKarte()].filter(Boolean), ...(liste ? [liste] : []), lernKarte()); assistent(bzs);
 }
 if (schlank && typeof vorgabe === 'string' && vorgabe.trim()) { feld.value = vorgabe; auswerten(vorgabe.trim(), null); }
@@ -2894,6 +3012,9 @@ window.__sprachtest = { auswerten, V, rechne, uebernehmen };
 const SEITEN = { buero: sBuero, termine: sTermine, kunden: sKunden, test: sTest, diktat: (vorgabe) => (ECHT && (!S.satz || S.anfahrtCent == null) ? ersetze('heute') : sTest(true, vorgabe)), start: sStart, frage: sFrage, fertig: sFertig, heute: sHeute, sprechen: sSprechen, vorschlag: sVorschlag, antwort: sAntwort, alles: sAlles, angaben: sAngaben, entwurf: sEntwurf, belege: sBelege, zugriffe: sZugriffe, vorlage: sVorlage, web: sWeb };
 function zeichne() { clearInterval(aufnahmeUhr); SEITEN[aktuell[0]](aktuell[1]); }
 const heuteOrig = SEITEN.heute; SEITEN.heute = function () { heuteOrig(); const k = root.querySelector('.kopf'); const b = el('button', { className: 'icon-knopf', type: 'button' }, 'Meine Angaben'); b.addEventListener('click', () => zeige('angaben')); k.append(b); };
+function logSpeicher(d) {
+const TBLOG = 'handwerker-fehlerprotokoll-v1'; try { if (d === undefined) return localStorage.getItem(TBLOG); if (d === null) localStorage.removeItem(TBLOG); else localStorage.setItem(TBLOG, d); return true; } catch (x) { return d === undefined ? null : false; }
+}
 const TB = 'handwerker-testbetrieb-v1', TB2 = TB + '-defekt', TB_FELDER = { kunden: 'liste', archiv: 'liste', termine: 'liste', zuletzt: 'liste', entwuerfe: 'liste', daten: 'objekt', adressen: 'objekt', pflichtLog: 'liste' };
 let ECHT = false, tbDefekt = false;
 try { const roh = localStorage.getItem(TB); if (roh) { ECHT = true; let d = null; try { d = JSON.parse(roh); } catch (e) { d = null; }
@@ -2902,6 +3023,7 @@ if (!d || typeof d !== 'object' || !d.T || Object.keys(TB_FELDER).some((k) => d.
 else { Object.assign(S, d.S && typeof d.S === 'object' ? d.S : {}); Object.keys(TB_FELDER).forEach((k) => { if (d.T[k] !== undefined) T[k] = TB_FELDER[k] === 'objekt' ? Object.assign(Object.create(null), d.T[k]) : d.T[k]; }); } } } catch (e) { tbDefekt = ECHT; }
 function tbEcht() { PREISLISTE = Object.freeze({}); S.rech = []; if (S.anfahrtCent != null) ANFAHRT = S.anfahrtCent; T.entwuerfe = T.entwuerfe || []; T.rech = []; T.auftraege = []; T.buero = BUERO.neu(Number(heuteISO().slice(0, 4))); }
 if (ECHT) tbEcht();
+if (Array.isArray(T.pflichtLog) && T.pflichtLog.some((x) => x && x.text !== undefined)) { T.pflichtLog = T.pflichtLog.map((x) => { const y = Object.assign({}, x); delete y.text; return y; }); tbSpeichern(); }
 function tbSpeichern() { if (!ECHT) return; try { const d = { S, T: {} }; Object.keys(TB_FELDER).forEach((k) => { d.T[k] = T[k]; }); localStorage.setItem(TB, JSON.stringify(d)); } catch (e) { toast('Speichern auf diesem Gerät nicht möglich – bitte Entwürfe teilen.'); } }
 window.addEventListener('pagehide', tbSpeichern); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') tbSpeichern(); });
 function tbStarten() { ECHT = true; S = neu(); T.archiv = []; T.kunden = []; T.daten = Object.create(null); T.adressen = {}; T.termine = []; T.zuletzt = []; T.entwuerfe = []; T.ctx = null; T.gewaehlt = null; tbEcht(); tbSpeichern(); try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {  } SEITEN.heute = sEigene; verlauf.length = 0; ersetze('heute'); }
@@ -3004,7 +3126,7 @@ await klick('Sprechen'); ok(!!document.querySelector('.bsp'), 'Banner überall')
 await klick('Sprechen', '.sprechtaste'); ok(text().includes('in Safari öffnen') || text().includes('Nur Testdaten'), 'Leiste Sprechen: nie stumm');
 const tippe = async (s) => { const t = s.toLowerCase(); if (/bezahl|offen/.test(t) && !/rechnung f|angebot/.test(t)) zeige('antwort', 'offen'); else zeige('entwurf', s); await tick(); await tick(); };
 await klick('Tippen', '.dock button'); document.getElementById('tippfeld').value = 'Rechnung für Frau Beispiel: Siphon getauscht, 1 Stunde, ohne Anfahrt'; document.getElementById('tippbar').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); await tick(); await tick();
-ok(text().includes('Was haben Sie gemacht?') && text().includes('Wie viele Aufträge sind in Ihrem Diktat?') && !text().includes('Trefferquote'), 'Tippen unten = derselbe Diktat-Weg wie Sprechen');
+ok(text().includes('Was haben Sie gemacht?') && text().includes('Ihr Diktat') && !text().includes('Trefferquote'), 'Tippen unten = derselbe Diktat-Weg wie Sprechen');
 await tippe('Rechnung für Frau Beispiel: einen Siphon getauscht. 1 Stunde, ohne Anfahrt, Material 1 Siphon.');
 ok(text().includes('Das habe ich verstanden') && text().includes('Frau Beispiel') && text().includes('Siphon') && !text().includes('Bitte prüfen'), 'Entwurf: Felder erkannt, nichts gelb');
 await klick('Passt – Entwurf erstellen'); const netto1 = satzCent() + 1400;
@@ -3034,7 +3156,7 @@ ok(text().includes('ja · 50,00 € (gesagt)') && document.querySelector('.knopf
 await klick('Ja, 50,00 € nur für diese Rechnung'); ok(!document.querySelector('.knopf-haupt').disabled, 'Tipp-Weg: nach Bestätigung frei'); await klick('Passt – Entwurf erstellen'); ok(text().includes('50,00 €') && !text().includes('25,00 €'), 'Tipp-Weg: Rechnung rechnet 50 €, nicht 25 €');
 kiAn = false; verlauf.length = 0; ersetze('test'); await tick(); ok(text().includes('Mikrofon') && text().includes('Beispielsätze'), 'Sprachtest-Seite');
 const ST = window.__sprachtest, ue = () => [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')), kn = (t) => [...root.querySelectorAll('button')].find((x) => x.textContent === t);
-const sa = async (t, n = 1) => { window.__sprachtest.auswerten(t, null); await tick(); const k = n && kn(n === 1 ? '1 Auftrag' : '2 oder mehr Aufträge'); if (k) { k.click(); await tick(); await tick(); } };
+const sa = async (t, w) => { window.__sprachtest.auswerten(t, null); await tick(); const k = w && [...root.querySelectorAll('button')].find((x) => x.textContent.startsWith(w)); if (k) { k.click(); await tick(); await tick(); } };
 const stdSetze = async (w) => { const f = root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]'); f.value = w; await klick('Stunden bestätigen', '.rueckfragen button'); };
 await sa('Ich war 3 Stunden bei Herrn Schmidt, habe 2 Rohre und Dichtband verbaut');
 ok(text().includes('Quelle im Satz: „3 Stunden“') && text().includes('Herr Schmidt') && document.querySelectorAll('mark.tm').length >= 3, 'Sprachtest: Quelle + Markierung');
@@ -3045,37 +3167,45 @@ await sa('Rechnung für Frau Beispiel: zwei Stunden zu 250 Euro die Stunde, ohne
 ok(text().includes('ungewöhnlicher Stundensatz') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Stundensatz über 200 €: ⚠ + Rückfrage sperrt Übernehmen');
 await sa('Rechnung für Frau Beispiel zwei Stunden, ohne Anfahrt, kein Material, heute. Die Rechnung brauch ich aber noch nicht.');
 ok(text().includes('⚠ Art:'), 'Art passt nicht zum Wortlaut: ⚠ auf der Geldkarte');
-await sa('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden, ohne Anfahrt, heute', 0);
-ok(text().includes('Wie viele Aufträge sind in Ihrem Diktat?') && !ue() && !root.querySelector('.test-befehl'), 'B: erst Auftragszahl'); await klick('1 Auftrag');
+await sa('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden, ohne Anfahrt, heute');
+ok(!text().includes('Wie viele Aufträge') && !!root.querySelector('.test-befehl'), 'Besuch: keine Auftragszahl-Frage');
 ok(text().includes('Vorschlag aus dem Diktat: 1,5 Std.') && ue().disabled, 'B: Vorbelegung markiert');
 { const r0 = T.rech.length; ST.uebernehmen(ST.V.befehle[0]); ok(T.rech.length === r0, 'B: zentrale Sperre'); }
 ok(text().includes('Rechenprobe: ✓') && text().includes('118,00 €') && text().includes('140,42 €') && !document.querySelector('.test-rot, .test-gelb'), 'Sprachtest: saubere Rechnung + Rechenprobe');
 ok([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Alle Geldangaben einzeln')).disabled, 'Geldkarte: ohne alle Haken gesperrt (kein Sammelknopf)');
 ok(text().includes('Anfahrt berechnen?') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Anfahrt: Pflichtfrage ohne gesagten Betrag sperrt Übernehmen');
 await geldOk('Stunden bestätigen'); ok(ue().disabled, 'B: ohne Gesamtzeit gesperrt'); await klick('Stunden bestätigen', '.rueckfragen button'); await klick('Entwurf übernehmen'); ok(T.rech.length === 1 && text().includes('Vorgemerkt (Beispiel)'), 'Sprachtest: fiktiv übernommen');
-await sa('Bei Frau Beispiel zwei Stunden, eine Dichtung. Der Hübner braucht noch ein Angebot.', 0); ok(text().includes('Auch genannt: Hübner'), 'Diktat-Spiegel: angehängter Name bei der Auftragszahl sichtbar'); await klick('1 Auftrag'); ok(!!root.querySelector('u.fremd'), 'Spiegel u.fremd');
-await sa('Bitte für Frau Beispiel eineinhalb Stunden und zwei Dichtungen festhalten, Termin am 23. Oktober.'); ok(text().includes('Termin oder erledigte') && !T.termine.some((x) => x.datum === '2026-10-23'), 'Termin+Arbeit: Rückfrage');
-{ const zwei = 'Für Frau Beispiel eine Rechnung, zwei Stunden, eine Dichtung. Ach und der Lindhof, Angebot, Pumpe.', r0 = T.rech.length + T.auftraege.length; await sa(zwei, 0); ok(text().includes('⚠ Ich höre 2 Aufträge in einem Diktat.'), 'B: Regel-Hinweis'); await klick('2 oder mehr Aufträge'); ok(text().includes('jeden Auftrag einzeln neu diktieren') && !kn('1 Auftrag') && !ue(), 'B: 2+ nichts');
-await klick('Doch nur einer'); ok(text().includes('✓ 1 Auftrag bestätigt') && ue().disabled && T.rech.length + T.auftraege.length === r0, 'B: Doch nur einer'); }
+await sa('Bei Frau Beispiel zwei Stunden, eine Dichtung. Der Hübner braucht noch ein Angebot.'); ok(!!root.querySelector('u.fremd'), 'Spiegel u.fremd');
+await sa('Bitte für Frau Beispiel eineinhalb Stunden und zwei Dichtungen festhalten, Termin am 23. Oktober.'); ok(!text().includes('Termin oder erledigte') && document.querySelectorAll('.test-befehl').length >= 2 && !T.termine.some((x) => x.datum === '2026-10-23'), 'Besuch: Arbeit + Termin, keine Sackgasse, nichts still');
+{ const zwei = 'Für Frau Beispiel zwei Stunden und eine Dichtung, und für Herrn Muster drei Stunden Heizung entlüftet.', r0 = T.rech.length + T.auftraege.length; await sa(zwei); ok(text().includes('Zwei Kunden erkannt: Frau Beispiel und Herr Muster') && (!ue() || ue().disabled), 'Besuch: Zwei-Kunden-Hinweis, gesperrt');
+await klick('Ein Auftrag'); ok(document.querySelectorAll('.test-befehl').length === 1 && !text().includes('Zwei Kunden erkannt'), 'Besuch: Ein Auftrag'); ok(text().includes('Kunde') && !!root.querySelector('.rueckfragen select'), 'Besuch: Ein Auftrag bei zwei Namen = Kunde wählen'); { const sl = root.querySelector('.rueckfragen select'); sl.value = 'Frau Beispiel'; sl.dispatchEvent(new Event('change')); await tick(); } await stdSetze('5'); await geldOk(); if (kn('Zur Kenntnis genommen: diese Zahlen sind nicht übernommen')) await klick('Zur Kenntnis genommen', 'button');
+{ const fr = !ue().disabled, n0 = T.rech.length + T.auftraege.length; ST.V.aufteilen = undefined; ST.uebernehmen(ST.V.befehle[0]); ok(fr && T.rech.length + T.auftraege.length === n0, 'Besuch: zentrale Sperre bei offenem Zwei-Kunden-Hinweis'); } await sa(zwei, 'Aufteilen'); ok(document.querySelectorAll('.test-befehl').length === 2 && T.rech.length + T.auftraege.length === r0, 'Besuch: aufgeteilt, nichts gespeichert'); }
+{ const r0 = T.rech.length + T.auftraege.length; await sa('Trag mal Fangert ein anderthalb Stunden zwei Ventile und dann Morzick zwei Stunden ohne Material.'); ok(!!kn('Morzick') && text().includes('Weitere Namen im Diktat'), 'Chips: weiterer Name angeboten');
+await klick('Morzick'); ok(document.querySelectorAll('.test-befehl').length === 2 && window.__sprachtest.V.befehle.some((b) => b.kunde === 'Morzick' && b.unsicher.includes('kunde')) && T.rech.length + T.auftraege.length === r0, 'Chips: abgetrennt, Kunde zu bestätigen, nichts gespeichert'); ok(T.pflichtLog.length && T.pflichtLog[T.pflichtLog.length - 1].antwort === 'Chip' && !T.pflichtLog[T.pflichtLog.length - 1].text, 'Chips: ohne Opt-in kein Diktattext im Protokoll');
+await klick('Zusammen lassen'); ok(document.querySelectorAll('.test-befehl').length === 1, 'Chips: zusammen lassen'); }
+await sa('Rechnung für Frau Beispiel, Siphon getauscht, eine Stunde. Dann noch Material: zwei Dichtungen.'); ok(!text().includes('Weitere Namen im Diktat'), 'Chips: keine bei einem Kunden mit Material');
+{ const pr = 'Rechnung für Frau Beispiel, Siphon getauscht, eine Stunde. Dann noch Material: zwei Dichtungen und ein Ventil. Anfahrt 30 Euro.', r0 = T.rech.length; await sa(pr);
+ok(!text().includes('einzeln diktieren') && !text().includes('Zwei Kunden') && document.querySelectorAll('.test-befehl').length === 1 && text().includes('Hinweis:'), 'Besuch: Mehr-Positionen-Diktat ohne Sackgasse');
+const m = root.querySelector('.rueckfragen input[aria-label="Menge"]'); if (m) { m.value = '1'; m.dispatchEvent(new Event('change')); await tick(); }
+await klick('Ja, 30,00 € Anfahrt nur für diese Rechnung'); await geldOk(); if (kn('Zur Kenntnis genommen: diese Zahlen sind nicht übernommen')) await klick('Zur Kenntnis genommen', 'button'); await klick('Entwurf übernehmen'); ok(T.rech.length === r0 + 1, 'Besuch: Mehr-Positionen-Diktat gespeichert'); }
 await sa('Für Frau Beispiel eine Rechnung, eine Stunde Ausbau und dann noch zwei Stunden Einbau, kein Material.'); { const f = root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]');
 ok(f && f.value === '' && text().includes('„eine Stunde“ · „zwei Stunden“') && text().includes('nicht zusammen') && ue().disabled, 'B: Zweitzeit leer');
 await stdSetze(''); ok(!!root.querySelector('.rueckfragen input[aria-label^="Stunden insgesamt"]') && ue().disabled, 'B: leer nie 0'); await stdSetze('3'); await klick('Zur Kenntnis genommen'); await geldOk('Stundensatz bestätigen'); ok(ue().disabled, 'B: ohne Satz gesperrt'); await klick('Stundensatz bestätigen', '.rueckfragen button'); const r0 = T.rech.length, nt = 3 * satzCent(); await klick('Entwurf übernehmen');
 ok(T.rech.length === r0 + 1 && T.rech[r0].brutto === nt + mwst(nt), 'B: 3 Std. gespeichert'); }
-await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde, ohne Anfahrt'); ST.V.temp = { [LERNSCHLEIFE.stamm('Siphons')]: 'dichtung' }; ST.rechne(); ok(ST.V.lese !== ST.V.text && ST.V.einAuftrag === true, 'B: Wörterbuch'); ST.auswerten('Rechnung für Frau Beispiel: drei Siphons, eine Stunde', null); ok(ST.V.einAuftrag === null, 'B: neues Diktat');
+await sa('Für Frau Beispiel zwei Stunden und eine Dichtung, und für Herrn Muster drei Stunden Heizung entlüftet.', 'Aufteilen'); ST.auswerten('Rechnung für Frau Beispiel: drei Siphons, eine Stunde', null); ok(ST.V.aufteilen === undefined, 'Besuch: neues Diktat setzt Aufteilen zurück');
 await sa('Rechnung für Frau Beispiel: zwei Siphons, eine Stunde zu 80 Euro die Stunde, ohne Anfahrt'); await stdSetze('0'); ok(!kn('Stundensatz bestätigen') && !ST.V.befehle[0].stunden, 'B: 0 Std.'); await geldOk(); ok(!ue().disabled, 'B: 0 Std. keine Sackgasse');
 await sa('Für Frau Beispiel eine Rechnung, eine Stunde Ausbau, dann eine Stunde Einbau und 1,5 Stunden Prüfung, kein Material.'); ok(text().includes('„eine Stunde“ · „eine Stunde“ · „1,5 Stunden“'), 'B: alle Zeitstellen');
 await sa('Bei Frau Beispiel zwei Stunden, Anfahrt 25 Euro'); await geldOk(); ok(ue().disabled && !!kn('Ja, 25,00 € Anfahrt nur für diese Rechnung'), 'B: Anfahrt bestätigen');
 { const b = ST.V.befehle[0]; await klick('Ja, 25,00 € Anfahrt nur für diese Rechnung'); ST.V.eing[b.satz + '|anfahrt'] = false; ST.rechne(); ok(ST.V.befehle[0].anfahrt === false, 'B: keine Anfahrt gewinnt'); }
-await sa('Kunde anlegen Frau Weber und dann Rechnung erstellen'); ok(text().includes('Bitte einzeln diktieren') && !ue(), 'B: Veto');
+await sa('Kunde anlegen Frau Weber und dann Rechnung erstellen'); ok(!text().includes('einzeln diktieren'), 'Besuch: Kunde + Rechnung ohne Sackgasse');
 await sa('Ich wollte einen Jutt. Ich möchte eine Rechnung für mein Kunden erstellen lassen. Ich habe jetzt fünf Stunden bei ihm gearbeitet. Pro Stunde haben wir mit ihm ausgemacht, dass ich 120 Euro koste. Mein Kunde ist: Herr Bauer aus Weiblingen von der Hauptstraße 15. Ich habe selber keine Materialien benutzt. Ich habe nur meine Arbeitsstunden drin gehabt und ich möchte diese im Rechnung stellen.');
-ok(text().includes('Herr Bauer') && text().includes('Weiblingen') && text().includes('Hauptstraße 15') && text().includes('keins (so gesagt)') && !text().includes('nicht in Ihrer Preisliste') && text().includes('✓ 1 Auftrag bestätigt') && document.querySelectorAll('.test-befehl').length === 1, 'Sprachtest Bauer: ein Auftrag, Kunde/Ort/Straße, kein Material bewusst');
+ok(text().includes('Herr Bauer') && text().includes('Weiblingen') && text().includes('Hauptstraße 15') && text().includes('keins (so gesagt)') && !text().includes('nicht in Ihrer Preisliste') && document.querySelectorAll('.test-befehl').length === 1, 'Sprachtest Bauer: ein Auftrag, Kunde/Ort/Straße, kein Material bewusst');
 ok([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Sprachtest Bauer: Stundensatz/Kunde erst bestätigen');
-{ const k0 = T.kunden.length; await sa(ST.V.text, 2); ok(!kn('Ja, Herr Bauer neu anlegen') && T.kunden.length === k0, 'Nein: keine Kundenanlage'); ST.auswerten(ST.V.text, null); await tick(); ok(ST.V.einAuftrag === false && !kn('Ja, Herr Bauer neu anlegen'), 'Nein bleibt'); await klick('Doch nur einer'); }
-ok(text().includes('Vorschlag aus dem Diktat: 5 Std.'), 'B: Doch nur einer Bauer');
+ok(text().includes('Vorschlag aus dem Diktat: 5 Std.'), 'Bauer: 5 Std. vorbelegt');
 await klick('Ja, Herr Bauer neu anlegen'); await geldOk();
 ok(text().includes('600,00 €') && text().includes('714,00 €') && text().includes('Rechenprobe: ✓') && !document.querySelector('.test-rot, .test-gelb') && !([...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled) && satzCent() === 6000, 'Sprachtest Bauer: 5 × 120 € = 600 €, Stammdaten unverändert');
 await sa('Wer hat noch nicht bezahlt?'); ok(text().includes('Offene Rechnungen') && /RE-\d{4}-0001/.test(text()), 'Sprachtest: offene Rechnungen (festgeschriebene Nummer)');
-ST.auswerten('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden', { logprob: -1.2, unsicher: true }); await tick(); await klick('1 Auftrag');
+ST.auswerten('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden', { logprob: -1.2, unsicher: true }); await tick();
 ok(text().includes('Spracherkennung war unsicher') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Sprachtest: unsichere Spracherkennung = gelb + gesperrt');
 await sa('Rechnung für Frau Beispiel: zwei Siphons, anderthalb Stunden'); await klick('Falsch', 'button.mini'); ok(!!document.querySelector('.test-rot') && [...root.querySelectorAll('button')].find((b) => b.textContent.includes('Entwurf übernehmen')).disabled, 'Sprachtest: „Falsch“ sperrt Übernehmen');
 await sa('Bei Frau Beispiel zwei Stunden, 50 Euro Anfahrtskosten');
@@ -3107,18 +3237,36 @@ await sa('Bei Frau Beispiel zwei Stunden, einen Siphon getauscht'); await tick()
 window.KI_AUFTRAG = async () => { throw new Error('aus'); }; await sa('Bei Frau Beispiel zwei Stunden'); await tick(); await tick(); await tick(); ok(text().includes('KI nicht erreichbar – es gelten nur die Regeln'), 'Stufe 2: KI fällt aus = Regeln, ehrlicher Hinweis');
 delete window.KI_AUFTRAG;
 kiAn = true;
-{ const M = (art) => function () { const r = this; window.__srAb = 0; this.start = () => setTimeout(() => (art === 'leer' ? (r.onstart(), r.onend()) : art === 'haengt' ? r.onstart() : art ? r.onerror({ error: art }) : (r.onstart(), r.onresult({ results: [Object.assign([{ transcript: 'Rechnung für Frau Beispiel, zwei Stunden' }], { isFinal: true })] }), r.onend())), 5); this.stop = () => {}; this.abort = () => { window.__srAb += 1; }; };
+{ const M = (art) => function () { const r = this; window.__srAb = 0; this.start = () => setTimeout(() => (art === 'leer' ? (r.onstart(), r.onend()) : art === 'haengt' ? r.onstart() : art ? r.onerror({ error: art }) : (r.onstart(), r.onresult({ results: [Object.assign([{ transcript: 'Rechnung für Frau Beispiel, zwei Stunden' }], { isFinal: true })] }), r.onend())), 5); this.stop = () => { window.__srStop = (window.__srStop || 0) + 1; }; this.abort = () => { window.__srAb += 1; }; };
 const alt = [window.SpeechRecognition, window.webkitSpeechRecognition], setz = (x) => { window.SpeechRecognition = window.webkitSpeechRecognition = x; }, sp = async (x) => { setz(x); zeige('diktat'); await tick(); await klick('Sprechen', '#sprechen-start'); await tick(); }, fe = () => document.activeElement.id === 'sprachtext';
 await sp(undefined); ok(text().includes('in Safari öffnen') && fe(), 'SR fehlt');
 await sp(M()); ok(text().includes('iPhone: Apple, Android/Chrome: Google') && text().includes('Nur Testdaten') && !document.querySelector('.uhr'), 'SR Hinweis');
-await klick('Verstanden, sprechen'); await tick(); const V2 = () => window.__sprachtest.V; ok(V2().text === 'Rechnung für Frau Beispiel, zwei Stunden' && V2().info.unsicher && text().includes('Wie viele Aufträge'), 'SR Text');
+await klick('Verstanden, sprechen'); await tick(); const V2 = () => window.__sprachtest.V; ok(V2().text === 'Rechnung für Frau Beispiel, zwei Stunden' && V2().info.unsicher && text().includes('Ihr Diktat'), 'SR Text');
 await klick('Prüfen'); ok(V2().info && V2().info.unsicher, 'SR Prüfen');
 await sp(M('leer')); document.getElementById('sprachtext').value = 'Alter Auftrag'; await klick('Sprechen', '#sprechen-start'); await tick(); ok(document.getElementById('sprachtext').value === 'Alter Auftrag' && text().includes('Nichts verstanden') && !V2().text, 'SR leer');
 await sp(M('service-not-allowed')); ok(text().includes('in Safari öffnen') && fe(), 'SR Fehler');
 await sp(M('haengt')); window.dispatchEvent(new Event('pagehide')); await tick(); ok(window.__srAb === 1 && !!document.getElementById('sprechen-start'), 'SR pagehide aus');
 T.srMs = 50; await sp(M('haengt')); await klick('Fertig'); await new Promise((r) => setTimeout(r, 150)); ok(window.__srAb === 1 && text().includes('Nichts verstanden'), 'SR Fertig-Watchdog'); T.srMs = 0;
+{ const dn = Date.now, t1 = dn(); T.srMs = 50; window.__srStop = 0; await sp(M('haengt')); Date.now = () => dn() + 91000; try { for (let i = 0; i < 40 && !text().includes('Nichts verstanden'); i++) await new Promise((r) => setTimeout(r, 50)); } finally { Date.now = dn; T.srMs = 0; } ok(window.__srStop === 1 && window.__srAb === 1 && text().includes('Nichts verstanden') && dn() - t1 < 5000, 'SR 90 s = wie Fertig (einmal stop, Wächter)'); }
+ok(text().includes('Sprache, auch Tastatur-Diktat, geht an Apple/Google – nur Testdaten.'), 'SR Dauerhinweis am Diktatfeld');
 await sp(M('haengt')); zeige('heute'); await new Promise((r) => setTimeout(r, 1100)); ok(window.__srAb === 1, 'SR Seitenwechsel');
 [window.SpeechRecognition, window.webkitSpeechRecognition] = alt; T.srJa = false; }
+{ zeige('kunden'); await tick(); const li = [...root.querySelectorAll('.posten li')].find((x) => x.textContent.startsWith('Frau Beispiel')); li.querySelector('button').click(); await tick(); await tick();
+ok(T.gewaehlt === 'Frau Beispiel' && text().includes('Diktat für Frau Beispiel'), 'Kundenliste: Diktat-Knopf wählt den Kunden'); T.kunden.push('=HYPERLINK(1)', '\n\uff1d1+2'); zeige('kunden'); await tick(); { const h = decodeURIComponent((root.querySelector('a[download="kunden.csv"]') || {}).href || ''); ok(h.includes('"\'=HYPERLINK(1)"') && !h.includes('"=HYPERLINK') && h.includes('"\'\n\uff1d1+2"'), 'Kundenliste: CSV-Export ohne Formeln'); } T.kunden.pop(); T.kunden.pop(); T.gewaehlt = 'Frau Beispiel'; await sa('Zwei Stunden, ein Siphon, ohne Anfahrt'); ok(window.__sprachtest.V.befehle[0].kunde === 'Frau Beispiel', 'Kundenliste: Diktat ohne Namen gehört zum Kunden');
+T.gewaehlt = null; T.daten['Frau Beispiel'] = Object.assign(T.daten['Frau Beispiel'] || {}, { alias: 'Uschi' }); zeige('diktat'); await tick(); await sa('Bei Uschi zwei Stunden, ein Siphon, ohne Anfahrt'); ok(window.__sprachtest.V.befehle[0].kunde === 'Frau Beispiel', 'Kundenliste: Spitzname ordnet zu');
+T.daten['Herr Bauer'] = Object.assign(T.daten['Herr Bauer'] || {}, { alias: 'Beispiel, Schatzi' }); T.daten['Frau Beispiel'].alias = 'Uschi, Schatzi'; await sa('Bei Uschi zwei Stunden, ein Siphon, ohne Anfahrt'); const L1 = window.__sprachtest.V.lese; await sa('Bei Schatzi zwei Stunden, ein Siphon'); ok(L1.includes('Frau Beispiel') && !L1.includes('Bauer') && window.__sprachtest.V.lese.includes('Schatzi'), 'Kundenliste: Spitznamen ein Durchlauf, doppelte nie ersetzt'); T.daten['Frau Beispiel'].alias = ''; T.daten['Herr Bauer'].alias = '';
+T.kunden.push('Herr Probelöschen'); zeige('kunden'); await tick(); const del = () => [...[...root.querySelectorAll('.posten li')].find((x) => x.textContent.startsWith('Herr Probelöschen')).querySelectorAll('button')].find((b) => /löschen/i.test(b.textContent));
+del().click(); await tick(); ok(T.kunden.includes('Herr Probelöschen') && /Wirklich löschen/.test(del().textContent), 'Kundenliste: Löschen fragt nach'); del().click(); await tick(); ok(!T.kunden.includes('Herr Probelöschen'), 'Kundenliste: gelöscht'); }
+zeige('diktat'); await tick(); { const cb = root.querySelector('input[aria-label="Testmodus: Diktate fürs Melden merken"]'); ok(!!cb && !cb.checked, 'Fehlerprotokoll: Standard aus');
+await sa('Rechnung für Frau Beispiel, zwei Stunden'); let raw = logSpeicher() || ''; ok(!raw.includes('Frau Beispiel'), 'Fehlerprotokoll: ohne Opt-in kein Diktattext');
+cb.checked = true; cb.dispatchEvent(new Event('change')); await tick(); ok(text().includes('Diktate werden gemerkt – nur Testdaten') && [...root.querySelectorAll('summary')].some((x) => x.textContent.includes('Testmodus AN')), 'Fehlerprotokoll: Dauerhinweis (auch Überschrift sofort)');
+await sa('Rechnung für Frau Beispiel, zwei Stunden'); raw = logSpeicher() || ''; ok(raw.includes('Frau Beispiel'), 'Fehlerprotokoll: mit Opt-in gemerkt'); zeige('diktat'); await tick(); ok([...root.querySelectorAll('summary')].some((x) => x.textContent.includes('Testmodus AN')), 'Fehlerprotokoll: Hinweis auch zugeklappt (P2)');
+await sa('Trag mal Fangert ein anderthalb Stunden zwei Ventile und dann Morzick zwei Stunden ohne Material.'); await klick('Morzick'); ok(T.pflichtLog[T.pflichtLog.length - 1].antwort === 'Chip' && !('text' in T.pflichtLog[T.pflichtLog.length - 1]), 'Fehlerprotokoll F1: Antwort-Protokoll auch mit Opt-in ohne Diktattext');
+{ const dn = Date.now; Date.now = () => dn() + 15 * 864e5; try { document.dispatchEvent(new Event('visibilitychange')); } finally { Date.now = dn; } ok(!(logSpeicher() || '').includes('Fangert') && !(logSpeicher() || '').includes('Frau Beispiel'), 'Fehlerprotokoll F3: 14 Tage auch bei Wiederaufnahme bereinigt'); }
+await sa('Rechnung für Frau Beispiel, zwei Stunden'); zeige('diktat'); await tick();
+{ const rm = Storage.prototype.removeItem; Storage.prototype.removeItem = () => { throw new Error('voll'); }; try { root.querySelectorAll('button').forEach((b) => { if (b.textContent.includes('Protokoll löschen')) b.click(); }); await tick(); } finally { Storage.prototype.removeItem = rm; } ok(document.body.textContent.includes('Protokoll konnte nicht gelöscht werden'), 'Fehlerprotokoll F2: Löschfehler schaltet ab + Meldung'); }
+zeige('diktat'); await tick(); { const c4 = root.querySelector('input[aria-label="Testmodus: Diktate fürs Melden merken"]'); ok(!c4.checked, 'Fehlerprotokoll F2: danach aus'); c4.checked = true; c4.dispatchEvent(new Event('change')); await tick(); }
+const cb2 = root.querySelector('input[aria-label="Testmodus: Diktate fürs Melden merken"]'); cb2.checked = false; cb2.dispatchEvent(new Event('change')); await tick(); ok(!logSpeicher() && ![...root.querySelectorAll('summary')].some((x) => x.textContent.includes('Testmodus AN')), 'Fehlerprotokoll: Aus = sofort gelöscht, Überschrift aus'); }
 tbStarten(); await tick(); ok(text().includes('TESTBETRIEB') && text().includes('Bitte zuerst Ihren Stundensatz') && !text().includes('Diktat aufnehmen'), 'Testbetrieb: erst eigene Werte');
 zeige('diktat'); await tick(); ok(!text().includes('Was haben Sie gemacht?') && text().includes('Bitte zuerst') && S.rech.length === 0 && !Object.keys(PREISLISTE).length, 'Testbetrieb: kein Diktat ohne eigene Werte, keine Demo-Rechnungen/-Preise');
 document.getElementById('tb-anf').value = ''; document.getElementById('tb-satz').value = '70'; await klick('Werte speichern'); ok(S.anfahrtCent == null && text().includes('Anfahrt 0–500'), 'Testbetrieb: leere Anfahrt ist nicht 0');
